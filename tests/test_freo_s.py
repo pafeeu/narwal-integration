@@ -105,6 +105,12 @@ async def test_freo_s_states(hass: HomeAssistant, freo) -> None:
     assert state.state == VacuumActivity.DOCKED
     assert state.attributes["fan_speed"] == "Normal"
     assert state.attributes["status"] == "Docked"
+    assert state.attributes["suction_level"] == 2
+    assert state.attributes["suction_level_current"] == 2
+    assert state.attributes["suction_next_clean"] == 2
+    assert state.attributes["water_level"] == 2
+    assert state.attributes["water_level_current"] == 2
+    assert state.attributes["water_next_clean"] == 2
     assert state.attributes["rooms"][5] == "Wejście"
     assert state.attributes["map_id"] == 1779376970
     assert hass.states.get(_entity(hass, "sensor", "battery")).state == "100"
@@ -246,6 +252,92 @@ async def test_property_push_updates_the_vacuum(hass: HomeAssistant, freo) -> No
     assert state.state == VacuumActivity.CLEANING
     assert state.attributes["current_room"] == "Wejście"
     assert hass.states.get(_entity(hass, "sensor", "current_room")).state == "Wejście"
+
+
+async def test_fan_speed_follows_device_during_a_task(hass: HomeAssistant, freo) -> None:
+    """During a clean, fan_speed is clean.suction_level; set_fan_speed only updates next clean."""
+    from homeassistant.components.vacuum import VacuumEntityFeature
+
+    vacuum = _entity(hass, "vacuum", "vacuum")
+    client = freo.coordinator.client
+    root = f"/{PRODUCT}/{DEVICE}/thing"
+
+    def push(payload: dict) -> None:
+        client._on_message(None, None, SimpleNamespace(
+            topic=f"{root}/property/down", payload=json.dumps(payload).encode(),
+        ))
+
+    # Idle/docked: next-clean preference (default Normal), even if a script changes it.
+    assert hass.states.get(vacuum).attributes["fan_speed"] == "Normal"
+    await hass.services.async_call(
+        "vacuum", "set_fan_speed", {"entity_id": vacuum, "fan_speed": "Quiet"}, blocking=True,
+    )
+    idle = hass.states.get(vacuum)
+    assert idle.attributes["fan_speed"] == "Quiet"
+    assert idle.attributes["suction_next_clean"] == 1
+    assert idle.attributes["suction_level_current"] == 2  # device still reports Normal
+    assert idle.attributes["suction_level"] == 1
+
+    push({"method": "reported", "messageId": "strong", "property": {
+        "robot_status": {"status": {"time": 1, "value": 4}},
+        "clean": {
+            "clean_rooms": {"time": 1, "value": [1, 7]},
+            "suction_level": {"time": 1, "value": 3},
+            "water_level": {"time": 1, "value": 3},
+        },
+    }})
+    await hass.async_block_till_done()
+    cleaning = hass.states.get(vacuum)
+    assert cleaning.state == VacuumActivity.CLEANING
+    assert cleaning.attributes["fan_speed"] == "Strong"
+    assert cleaning.attributes["suction_level"] == 3
+    assert cleaning.attributes["suction_level_current"] == 3
+    assert cleaning.attributes["suction_next_clean"] == 1
+    assert cleaning.attributes["water_level"] == 3
+    assert cleaning.attributes["water_level_current"] == 3
+    assert cleaning.attributes["water_next_clean"] == 2
+    assert hass.states.get(_entity(hass, "select", "water_level")).state == "high"
+    assert cleaning.attributes["status"] == "Cleaning: Korytarz, Łazienka"
+    assert VacuumEntityFeature.STATUS in VacuumEntityFeature(cleaning.attributes["supported_features"])
+
+    # Mid-clean preference change must not overwrite the displayed current suction.
+    await hass.services.async_call(
+        "vacuum", "set_fan_speed", {"entity_id": vacuum, "fan_speed": "Normal"}, blocking=True,
+    )
+    await hass.services.async_call(
+        "select", "select_option",
+        {"entity_id": _entity(hass, "select", "water_level"), "option": "low"},
+        blocking=True,
+    )
+    still = hass.states.get(vacuum)
+    assert still.attributes["fan_speed"] == "Strong"
+    assert still.attributes["suction_next_clean"] == 2
+    assert still.attributes["suction_level_current"] == 3
+    assert still.attributes["water_level"] == 3
+    assert still.attributes["water_next_clean"] == 1
+    assert hass.states.get(_entity(hass, "select", "water_level")).state == "high"
+
+    hass.config.language = "pl"
+    freo.coordinator.async_set_updated_data(client.state)
+    await hass.async_block_till_done()
+    assert hass.states.get(vacuum).attributes["status"] == "Sprzątanie: Korytarz, Łazienka"
+    assert hass.states.get(_entity(hass, "sensor", "status")).state == "Sprzątanie: Korytarz, Łazienka"
+
+    push({"method": "reported", "messageId": "pause", "property": {
+        "robot_status": {"status": {"time": 2, "value": 3}},
+    }})
+    await hass.async_block_till_done()
+    assert hass.states.get(vacuum).attributes["status"] == "Pauza: Korytarz, Łazienka"
+
+    push({"method": "reported", "messageId": "home", "property": {
+        "robot_status": {"status": {"time": 3, "value": 5}},
+        "clean": {"clean_rooms": {"time": 3, "value": []}},
+    }})
+    await hass.async_block_till_done()
+    assert hass.states.get(vacuum).attributes["status"] == "Powrót do stacji"
+    # Returning still shows device suction; preference stays Normal.
+    assert hass.states.get(vacuum).attributes["fan_speed"] == "Strong"
+    assert hass.states.get(vacuum).attributes["suction_next_clean"] == 2
 
 
 async def test_status_6_is_docked_and_current_room_is_a_name(hass: HomeAssistant, freo) -> None:

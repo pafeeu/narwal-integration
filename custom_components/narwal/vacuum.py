@@ -25,12 +25,15 @@ from .const import (
 )
 from .coordinator import NarwalCoordinator
 from .entity import Bx3Entity, NarwalEntity
+from .thing_coordinator import ThingCoordinator
 from .narwal_client import CleanMode, FanLevel, MopHumidity
 from .narwal_client.thing_protocol import (
     SUCTION_BY_LEVEL,
     SUCTION_LEVELS,
     SWEEP_TYPES,
+    WATER_BY_LEVEL,
     WATER_LEVELS,
+    localized_status,
 )
 from .narwal_client.models import (
     ACTIVITY_CLEANING,
@@ -272,6 +275,7 @@ class Bx3Vacuum(Bx3Entity, StateVacuumEntity):
     _attr_translation_key = "narwal"
     _attr_supported_features = (
         VacuumEntityFeature.STATE
+        | VacuumEntityFeature.STATUS  # more-info header still uses attributes.status
         | VacuumEntityFeature.START
         | VacuumEntityFeature.STOP
         | VacuumEntityFeature.PAUSE
@@ -292,18 +296,45 @@ class Bx3Vacuum(Bx3Entity, StateVacuumEntity):
 
     @property
     def fan_speed(self) -> str | None:
-        return SUCTION_BY_LEVEL.get(self.coordinator.effective_suction())
+        """Device suction while a task runs; otherwise the next-clean preference.
+
+        A mid-task ``set_fan_speed`` only updates the preference. The displayed
+        value stays on ``clean.suction_level`` until the robot is idle again.
+        """
+        return SUCTION_BY_LEVEL.get(self._display_suction())
+
+    def _display_suction(self) -> int:
+        state = self.state_data
+        if state.task_active and state.suction is not None:
+            return state.suction
+        return self.coordinator.effective_suction()
+
+    def _display_water(self) -> int:
+        state = self.state_data
+        if state.task_active and state.water is not None:
+            return state.water
+        return self.coordinator.effective_water()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         state = self.state_data
+        next_suction = self.coordinator.effective_suction()
+        next_water = self.coordinator.effective_water()
+        current_suction = state.suction
+        current_water = state.water
+        language = getattr(self.hass.config, "language", None) or "en"
         attrs: dict[str, Any] = {
-            "status": state.status_text,
+            "status": localized_status(state, language),
             "rooms": {room.room_id: room.display_name for room in state.rooms},
             "no_go_rooms": [],
-            "suction_level": self.coordinator.effective_suction(),
-            "water_level": self.coordinator.effective_water(),
-            # No mid-clean suction or water write was captured. These apply next time.
+            # Displayed levels follow the device during a task, else the next clean.
+            "suction_level": self._display_suction(),
+            "water_level": self._display_water(),
+            "suction_level_current": current_suction,
+            "suction_next_clean": next_suction,
+            "water_level_current": current_water,
+            "water_next_clean": next_water,
+            # No mid-clean write was captured; set_fan_speed / water select store prefs.
             "suction_applies_to": "next_clean",
             "water_applies_to": "next_clean",
             "clean_rooms": state.clean_room_ids,

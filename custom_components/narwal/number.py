@@ -11,6 +11,7 @@ from . import NarwalConfigEntry
 from .const import PROTOCOL_THING
 from .coordinator import NarwalCoordinator
 from .entity import Bx3Entity, NarwalEntity
+from .thing_coordinator import ThingCoordinator
 
 
 async def async_setup_entry(
@@ -86,7 +87,12 @@ class NarwalCleanPasses(NarwalEntity, RestoreNumber):
         self.async_write_ha_state()
 
 class Bx3CleanPasses(Bx3Entity, NumberEntity):
-    """How many passes ``start_sweep`` asks for. 1 or 2, from the options flow."""
+    """How many passes ``start_sweep`` asks for. 1 or 2, from the options flow.
+
+    The Freo S capture reports ``suction_level`` and ``water_level`` on the
+    clean module, but not ``sweep_times`` / ``mop_times`` as live properties.
+    This entity is therefore always the next-clean preference.
+    """
 
     _attr_translation_key = "clean_passes"
     _attr_icon = "mdi:repeat"

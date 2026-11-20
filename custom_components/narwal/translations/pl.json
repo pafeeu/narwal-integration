@@ -41,6 +41,33 @@
       "narwal": {
         "name": "Odkurzacz Narwal",
         "state_attributes": {
+          "status": {
+            "name": "Status",
+            "state": {
+              "idle": "Bezczynny",
+              "docked": "W stacji",
+              "working_at_station": "Praca w stacji",
+              "cleaning": "Sprzątanie",
+              "cleaning_rooms": "Sprzątanie: {rooms}",
+              "paused": "Pauza",
+              "paused_rooms": "Pauza: {rooms}",
+              "returning": "Powrót do stacji",
+              "fault": "Błąd {code}",
+              "unknown": "Nieznany"
+            }
+          },
+          "suction_level_current": {
+            "name": "Bieżąca siła ssania"
+          },
+          "suction_next_clean": {
+            "name": "Siła ssania następnego sprzątania"
+          },
+          "water_level_current": {
+            "name": "Bieżący poziom wody"
+          },
+          "water_next_clean": {
+            "name": "Poziom wody następnego sprzątania"
+          },
           "suction_applies_to": {
             "name": "Siła ssania dotyczy",
             "state": {"next_clean": "Następnego sprzątania"}

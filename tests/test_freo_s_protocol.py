@@ -17,6 +17,7 @@ from custom_components.narwal.narwal_client.thing_protocol import (
     build_start_input,
     decode_map_blob,
     encode_schedules,
+    localized_status,
     parse_timing_value,
     result_code,
     set_schedule_enabled,
@@ -151,6 +152,16 @@ def test_status_push_sequence_matches_the_capture() -> None:
     unnamed.robot_status["robot_in_station"] = True
     assert unnamed.activity == "docked"
     assert unnamed.status_text == "Working at station"
+    assert localized_status(unnamed, "pl") == "Praca w stacji"
+    cleaning.rooms = cleaning.rooms  # map already loaded above
+    assert localized_status(cleaning, "en") == "Cleaning: Wejście"
+    assert localized_status(cleaning, "pl") == "Sprzątanie: Wejście"
+    cleaning.robot_status["status"] = 3
+    assert localized_status(cleaning, "pl") == "Pauza: Wejście"
+    cleaning.robot_status["status"] = 5
+    cleaning.clean["clean_rooms"] = []
+    assert localized_status(cleaning, "pl") == "Powrót do stacji"
+    assert localized_status(cleaning, "de") == "Returning to dock"  # unknown -> English
 
 
 def test_command_payloads_match_fixtures() -> None:

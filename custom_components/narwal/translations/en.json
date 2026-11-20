@@ -80,6 +80,33 @@
       "narwal": {
         "name": "Narwal Vacuum",
         "state_attributes": {
+          "status": {
+            "name": "Status",
+            "state": {
+              "idle": "Idle",
+              "docked": "Docked",
+              "working_at_station": "Working at station",
+              "cleaning": "Cleaning",
+              "cleaning_rooms": "Cleaning: {rooms}",
+              "paused": "Paused",
+              "paused_rooms": "Paused: {rooms}",
+              "returning": "Returning to dock",
+              "fault": "Fault {code}",
+              "unknown": "Unknown"
+            }
+          },
+          "suction_level_current": {
+            "name": "Current suction"
+          },
+          "suction_next_clean": {
+            "name": "Next-clean suction"
+          },
+          "water_level_current": {
+            "name": "Current water"
+          },
+          "water_next_clean": {
+            "name": "Next-clean water"
+          },
           "suction_applies_to": {
             "name": "Suction applies to",
             "state": {

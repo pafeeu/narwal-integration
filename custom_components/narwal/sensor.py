@@ -23,6 +23,8 @@ from .entity import Bx3Entity, NarwalEntity
 from .narwal_client import NarwalState
 from .narwal_client.error_codes import error_message
 from .narwal_client.proto import enum_labels
+from .narwal_client.thing_protocol import localized_status
+from .thing_coordinator import ThingCoordinator
 
 CONSUMABLE_NAMES = {
     "CONSUMABLE_MAINTAIN_ITEM_DUST_BOX": "Clean the dust bin",
@@ -250,12 +252,15 @@ class Bx3BatterySensor(Bx3Sensor):
 
 
 class Bx3StatusSensor(Bx3Sensor):
+    """Localized Freo S status (same phrasing as the vacuum more-info header)."""
+
     def __init__(self, coordinator: ThingCoordinator) -> None:
         super().__init__(coordinator, "status", icon="mdi:robot-vacuum")
 
     @property
     def native_value(self) -> str:
-        return self.state_data.status_text
+        language = getattr(self.hass.config, "language", None) or "en"
+        return localized_status(self.state_data, language)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

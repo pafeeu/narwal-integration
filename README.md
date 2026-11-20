@@ -99,7 +99,7 @@ python scripts/freo_s_live.py set-schedule --id 10 --enabled false --yes
 
 `start` and `set-schedule` change what the robot does. `recall` drives it home. Run them yourself, one at a time.
 
-Suction and water are stored for the **next** clean. The capture has no property `set` and no action that changes them while a clean is already running. The vacuum attributes `suction_applies_to` and `water_applies_to` are `next_clean`.
+Suction and water **writes** are stored for the **next** clean. The capture has no property `set` and no action that changes them while a clean is already running. While cleaning, paused, or returning, `fan_speed` and the water select show the device's `clean.suction_level` / `clean.water_level`. When idle or docked they show the next-clean preference (what the next `start_sweep` will send). Attributes `suction_level_current` / `suction_next_clean` and `water_level_current` / `water_next_clean` expose both. Passes stay next-clean only: the capture does not report `sweep_times` as a live property. `suction_applies_to` and `water_applies_to` remain `next_clean` for the write path.
 
 ### Defaults
 

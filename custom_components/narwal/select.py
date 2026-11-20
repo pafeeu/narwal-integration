@@ -16,6 +16,7 @@ from .const import CLEAN_MODE_LIST, CLEAN_MODE_MAP, CLEAN_MODE_REVERSE, MOP_HUMI
 from .coordinator import NarwalCoordinator
 from .entity import Bx3Entity, NarwalEntity
 from .narwal_client.thing_protocol import SWEEP_BY_TYPE, SWEEP_TYPES, WATER_BY_LEVEL, WATER_LEVELS
+from .thing_coordinator import ThingCoordinator
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -156,7 +157,11 @@ class NarwalConfigSelect(NarwalEntity, SelectEntity):
         self.async_write_ha_state()
 
 class Bx3WaterSelect(Bx3Entity, SelectEntity):
-    """Water level sent with the next clean. No mid-clean write was captured."""
+    """Water level: device value during a task, next-clean preference when idle.
+
+    No mid-clean property write was captured. Selecting an option always
+    stores the preference for the next ``start_sweep``.
+    """
 
     _attr_translation_key = "water_level"
     _attr_icon = "mdi:water"
@@ -167,6 +172,9 @@ class Bx3WaterSelect(Bx3Entity, SelectEntity):
 
     @property
     def current_option(self) -> str | None:
+        state = self.state_data
+        if state.task_active and state.water is not None:
+            return WATER_BY_LEVEL.get(state.water)
         return WATER_BY_LEVEL.get(self.coordinator.effective_water())
 
     async def async_select_option(self, option: str) -> None:

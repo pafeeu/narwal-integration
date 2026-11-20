@@ -89,6 +89,38 @@ STATUS_TEXT = {
     9: "Docked",
 }
 
+# Phrases for the vacuum ``status`` attribute (and the status sensor). Room
+# names stay as the map reports them. English is the default when the HA
+# language is missing or unknown.
+STATUS_PHRASES: dict[str, dict[str, str]] = {
+    "en": {
+        "idle": "Idle",
+        "docked": "Docked",
+        "working_at_station": "Working at station",
+        "cleaning": "Cleaning",
+        "cleaning_rooms": "Cleaning: {rooms}",
+        "paused": "Paused",
+        "paused_rooms": "Paused: {rooms}",
+        "returning": "Returning to dock",
+        "fault": "Fault {code}",
+        "unknown": "Unknown",
+        "status": "Status {code}",
+    },
+    "pl": {
+        "idle": "Bezczynny",
+        "docked": "W stacji",
+        "working_at_station": "Praca w stacji",
+        "cleaning": "Sprzątanie",
+        "cleaning_rooms": "Sprzątanie: {rooms}",
+        "paused": "Pauza",
+        "paused_rooms": "Pauza: {rooms}",
+        "returning": "Powrót do stacji",
+        "fault": "Błąd {code}",
+        "unknown": "Nieznany",
+        "status": "Status {code}",
+    },
+}
+
 _DAY_NAMES = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 _ACTIVE_STATUSES = frozenset({3, 4, 5})
 
@@ -580,14 +612,8 @@ class ThingState:
 
     @property
     def status_text(self) -> str:
-        if self.fault:
-            return f"Fault {self.fault}"
-        code = self.status_code
-        if code in STATUS_TEXT:
-            return STATUS_TEXT[code]
-        if code is None:
-            return "Unknown"
-        return f"Status {code}"
+        """English status for logs and older callers. Prefer ``localized_status``."""
+        return localized_status(self, "en")
 
     @property
     def task_active(self) -> bool:
@@ -621,10 +647,45 @@ class ThingState:
         """
         if self.activity not in (ACTIVITY_CLEANING, ACTIVITY_PAUSED):
             return None
-        names = [name for room_id in self.clean_room_ids if (name := self.room_name(room_id))]
+        names = self.task_room_names()
         if not names:
             return None
         return ", ".join(names)
+
+    def task_room_names(self) -> list[str]:
+        """Map names for ``clean.clean_rooms``, skipping ids with no loaded name."""
+        return [name for room_id in self.clean_room_ids if (name := self.room_name(room_id))]
+
+
+def localized_status(state: ThingState, language: str | None = None) -> str:
+    """Human status for the vacuum more-info header and the status sensor.
+
+    ``language`` is Home Assistant's ``hass.config.language`` (e.g. ``pl``).
+    Unknown languages fall back to English. Cleaning and paused include the
+    task's room names when the map knows them. Returning is a plain phrase:
+    the capture clears ``clean_rooms`` on the way home.
+    """
+    lang = (language or "en").split("-", 1)[0].lower()
+    phrases = STATUS_PHRASES.get(lang) or STATUS_PHRASES["en"]
+    if state.fault:
+        return phrases["fault"].format(code=state.fault)
+    code = state.status_code
+    rooms = ", ".join(state.task_room_names())
+    if code == 4:
+        return phrases["cleaning_rooms"].format(rooms=rooms) if rooms else phrases["cleaning"]
+    if code == 3:
+        return phrases["paused_rooms"].format(rooms=rooms) if rooms else phrases["paused"]
+    if code == 5:
+        return phrases["returning"]
+    if code == 6:
+        return phrases["working_at_station"]
+    if code == 9:
+        return phrases["docked"]
+    if code == 2:
+        return phrases["idle"]
+    if code is None:
+        return phrases["unknown"]
+    return phrases["status"].format(code=code)
 
 
 def apply_thing_message(state: ThingState, topic: str, data: dict[str, Any]) -> bool:
