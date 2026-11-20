@@ -1,0 +1,34 @@
+{
+  "request": {
+    "topic": "thing/property/up",
+    "payload": {
+      "method": "getReported",
+      "messageId": "00000000-0000-4000-8000-000000000100",
+      "properties": {
+        "map": []
+      }
+    }
+  },
+  "responses": [
+    {
+      "topic": "thing/property/up/reply",
+      "payload": {
+        "method": "getReported",
+        "messageId": "00000000-0000-4000-8000-000000000100",
+        "payload": {
+          "code": 0,
+          "map": {
+            "current_room_info": {
+              "time": 1779712177203,
+              "value": {
+                "rooms": "[{\"roomId\": 1, \"roomName\": \"Korytarz\", \"roomType\": 0}, {\"roomId\": 4, \"roomName\": \"Sypialnia\", \"roomType\": 0}, {\"roomId\": 5, \"roomName\": \"Wejście \", \"roomType\": 0}, {\"roomId\": 6, \"roomName\": \"Kuchnia\", \"roomType\": 0}, {\"roomId\": 7, \"roomName\": \"Łazienka\", \"roomType\": 0}, {\"roomId\": 8, \"roomName\": \"Salon\", \"roomType\": 0}]",
+                "mapId": 1779376970
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "note": "topic prefix: /<product_key=ZTM5lnVgLG>/<device_id>/ ; room names from a captured map property"
+}

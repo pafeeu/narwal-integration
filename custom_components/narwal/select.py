@@ -11,7 +11,8 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import NarwalConfigEntry
-from .const import CLEAN_MODE_LIST, CLEAN_MODE_MAP, CLEAN_MODE_REVERSE, MOP_HUMIDITY_MAP
+from .bx3 import async_setup_bx3_selects
+from .const import CLEAN_MODE_LIST, CLEAN_MODE_MAP, CLEAN_MODE_REVERSE, MOP_HUMIDITY_MAP, PROTOCOL_THING
 from .coordinator import NarwalCoordinator
 from .entity import NarwalEntity
 
@@ -66,6 +67,9 @@ async def async_setup_entry(
     entry: NarwalConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
+    if entry.runtime_data.protocol == PROTOCOL_THING:
+        async_setup_bx3_selects(hass, entry.runtime_data, async_add_entities)
+        return
     coordinator = entry.runtime_data
     entities: list[SelectEntity] = [
         NarwalCleanModeSelect(coordinator),

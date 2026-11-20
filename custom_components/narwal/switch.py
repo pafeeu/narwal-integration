@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import NarwalConfigEntry
+from .const import PROTOCOL_THING
 from .coordinator import NarwalCoordinator
 from .entity import NarwalEntity
 
@@ -48,6 +49,9 @@ async def async_setup_entry(
     entry: NarwalConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
+    if entry.runtime_data.protocol == PROTOCOL_THING:
+        async_add_entities([])
+        return
     coordinator = entry.runtime_data
     entities: list[SwitchEntity] = [NarwalConfigSwitch(coordinator, d) for d in SWITCHES]
     entities.append(NarwalDndSwitch(coordinator))

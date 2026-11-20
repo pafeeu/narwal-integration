@@ -155,7 +155,6 @@ class NarwalVacuumCard extends HTMLElement {
   _camera() { return this._sibling("camera", "map", "camera_entity", (e) => true); }
   _battery() { return this._sibling("sensor", "battery", "battery_entity", (e) => e.includes("battery")); }
   _modeSelect() { return this._sibling("select", "clean_mode", "mode_entity", (e) => e.includes("clean_mode")); }
-  _wetnessSelect() { return this._sibling("select", "mop_humidity"); }
 
   _state(entityId) {
     return entityId ? this._hass.states[entityId] : undefined;
@@ -266,10 +265,28 @@ class NarwalVacuumCard extends HTMLElement {
     return btn;
   }
 
+  _modeChoices() {
+    const entityId = this._modeSelect();
+    const state = entityId && this._hass && this._hass.states[entityId];
+    const options = state && state.attributes.options;
+    if (options && options.length) {
+      const labels = {
+        "Vacuum & Mop": "Vacuum & Mop",
+        "Vacuum then Mop": "Vac → Mop",
+        "Vacuum Only": "Vacuum",
+        "Mop Only": "Mop",
+      };
+      return options.map((value) => ({ label: labels[value] || value, value }));
+    }
+    return MODES;
+  }
+
   _buildModes() {
     const container = this.shadowRoot.getElementById("modes");
+    const modes = this._hass ? this._modeChoices() : MODES;
+    container.dataset.sig = modes.map((m) => m.value).join("|");
     container.innerHTML = "";
-    for (const m of MODES) {
+    for (const m of modes) {
       const btn = this._chip(m.label, () => {
         this._selectedMode = m.value;
         this._syncModeEntity();
@@ -295,7 +312,8 @@ class NarwalVacuumCard extends HTMLElement {
     add("start", `${ICON("mdi:play")} Start`, () => this._primaryAction(), "start-btn");
     add("secondary", `${ICON("mdi:stop")} Stop`, () => this._vacuum("stop"));
     add("secondary", `${ICON("mdi:home")} Dock`, () => this._vacuum("return_to_base"));
-    add("secondary", ICON("mdi:map-marker"), () => this._vacuum("locate"));
+    const locate = add("secondary", ICON("mdi:map-marker"), () => this._vacuum("locate"));
+    locate.id = "locate-btn";
   }
 
   /* --- Update ----------------------------------------------------- */
@@ -382,9 +400,22 @@ class NarwalVacuumCard extends HTMLElement {
   }
 
   _updateModes() {
-    for (const btn of this.shadowRoot.getElementById("modes").children) {
+    const modes = this._modeChoices();
+    const container = this.shadowRoot.getElementById("modes");
+    const sig = modes.map((m) => m.value).join("|");
+    if (container.dataset.sig !== sig) {
+      container.dataset.sig = "";
+      this._buildModes();
+    }
+    if (modes.length && !modes.some((m) => m.value === this._selectedMode)) {
+      this._selectedMode = modes[0].value;
+    }
+    for (const btn of container.children) {
       btn.classList.toggle("active", btn.dataset.mode === this._selectedMode);
     }
+    const features = this._hass.states[this._config.entity]?.attributes.supported_features ?? 0;
+    const locate = this.shadowRoot.getElementById("locate-btn");
+    if (locate) locate.hidden = (features & 512) === 0;
     // Suction only matters when vacuuming, wetness only when mopping.
     this.shadowRoot.getElementById("suction-group").classList.toggle("hidden", this._selectedMode === "Mop Only");
     this.shadowRoot.getElementById("wetness-group").classList.toggle(
@@ -512,7 +543,11 @@ class NarwalVacuumCard extends HTMLElement {
 
   _syncModeFromEntity() {
     const state = this._state(this._modeSelect());
-    if (state && MODES.some((m) => m.value === state.state)) this._selectedMode = state.state;
+    if (state && this._modeChoices().some((m) => m.value === state.state)) this._selectedMode = state.state;
+  }
+
+  _wetnessSelect() {
+    return this._sibling("select", "mop_humidity") || this._sibling("select", "water_level");
   }
 
   _primaryAction() {

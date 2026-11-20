@@ -68,6 +68,9 @@
       "current_room": {
         "name": "Current room"
       },
+      "schedules": {
+        "name": "Schedules"
+      },
       "consumables_due": {
         "name": "Maintenance items due"
       },
@@ -151,6 +154,14 @@
       "clean_mode": {
         "name": "Clean mode"
       },
+      "water_level": {
+        "name": "Water level",
+        "state": {
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High"
+        }
+      },
       "mop_humidity": {
         "name": "Mop wetness",
         "state": {
@@ -220,6 +231,30 @@
       },
       "clean_passes": {
         "name": "Clean passes"
+      }
+    }
+  },
+  "services": {
+    "set_schedules": {
+      "name": "Set Freo S schedules",
+      "description": "Rewrite the Freo S schedule list. Pass the full timing string, or one schedule id and whether it is enabled. The integration always writes the whole list.",
+      "fields": {
+        "entity_id": {
+          "name": "Vacuum",
+          "description": "The Freo S vacuum entity."
+        },
+        "timing": {
+          "name": "Timing list",
+          "description": "The full schedule string (the timing attribute). Every entry, separated by semicolons."
+        },
+        "schedule_id": {
+          "name": "Schedule id",
+          "description": "Id of one entry to enable or disable. The rest of the list is left as the robot last reported it."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Turn that schedule on or off."
+        }
       }
     }
   }

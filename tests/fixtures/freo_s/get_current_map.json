@@ -1,0 +1,34 @@
+{
+  "request": {
+    "topic": "thing/action/request",
+    "payload": {
+      "method": "invoke",
+      "actionIdentifier": "get_current_map",
+      "messageId": "00000000-0000-4000-8000-000000000101",
+      "module": "map",
+      "input": {}
+    }
+  },
+  "responses": [
+    {
+      "topic": "thing/action/request/reply",
+      "payload": {
+        "code": 0,
+        "method": "invoke",
+        "messageId": "00000000-0000-4000-8000-000000000101"
+      }
+    },
+    {
+      "topic": "thing/action/invoke/reply",
+      "payload": {
+        "code": 0,
+        "messageId": "00000000-0000-4000-8000-000000000101",
+        "method": "invoke",
+        "output": {
+          "current_map": "H4sIAOkLAGsC/0srSs3XLdbNTSwAAHztJz8KAAAA"
+        }
+      }
+    }
+  ],
+  "note": "current_map is gzip+base64. The captured floor plan is replaced with a tiny gzip payload."
+}

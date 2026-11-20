@@ -1,0 +1,42 @@
+{
+  "request": {
+    "topic": "thing/action/request",
+    "payload": {
+      "method": "invoke",
+      "actionIdentifier": "start_sweep",
+      "messageId": "00000000-0000-4000-8000-000000000007",
+      "module": "clean",
+      "input": {
+        "sweep_mode": 1,
+        "sweep_type": 2,
+        "sweep_times": 1,
+        "mop_times": 1,
+        "suction_level": 2,
+        "water_level": 2,
+        "map_id": 1779376970,
+        "area_ids": [
+          5
+        ]
+      }
+    }
+  },
+  "responses": [
+    {
+      "topic": "thing/action/request/reply",
+      "payload": {
+        "code": 0,
+        "method": "invoke",
+        "messageId": "00000000-0000-4000-8000-000000000008"
+      }
+    },
+    {
+      "topic": "thing/action/invoke/reply",
+      "payload": {
+        "code": 0,
+        "messageId": "00000000-0000-4000-8000-000000000009",
+        "method": "invoke"
+      }
+    }
+  ],
+  "note": "topic prefix: /<product_key=ZTM5lnVgLG>/<device_id>/"
+}

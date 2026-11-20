@@ -29,9 +29,69 @@ A custom Home Assistant integration for **Narwal** robot vacuums (Freo X Ultra a
 
 This integration has been tested with:
 
-- Narwal Freo X Ultra
+- Narwal Freo X Ultra (protobuf cloud protocol)
+- Narwal Freo S (ThingModel JSON protocol, product group BX3)
 
-Other Narwal models using the same cloud platform should also work.
+Other Narwal models that use the Freo X Ultra protobuf topics should also work. The integration picks the protocol from the robot's product key, product group, or the cloud flag `switch_to_robothings`. A Freo X Ultra entry is unchanged.
+
+## Freo S (BX3)
+
+The Freo S (product key `ZTM5lnVgLG`, product group `BX3`) answers plain JSON on `/<productKey>/<deviceId>/thing/...` and does not answer the protobuf commands used by the Freo X Ultra. Setup is the same account login. With one robot it is added immediately; the protocol follows the product.
+
+What you get:
+
+- Vacuum: start, pause, resume, stop, return to dock, suction (Quiet / Normal / Strong / Max)
+- Room cleaning: Home Assistant 2026.3+ `vacuum.clean_area` (rooms are segments), and `vacuum.send_command` → `clean_rooms`
+- Sensors: battery, status, error, docked, charging, cleaning time, cleaned area, progress, current room, schedules
+- Water level and clean mode (Vacuum & Mop, or Vacuum Only). Both are sent with the next clean
+- Schedules: read on the Schedules sensor; write with `narwal.set_schedules` (always the whole list)
+
+Suction and water are included in `start_sweep`. A separate property write for them was not captured, so changing them while the robot is docked is stored until the next clean. Resume (`continue_sweep`) and stop (`stop_sweeping`) use the same empty invoke envelope as pause; those two action names come from the app and were not in the capture. Whole-home start sends every room id with the same payload as a room clean.
+
+`narwal.set_schedules` either replaces the list or flips one entry after reading the current list:
+
+```yaml
+action: narwal.set_schedules
+data:
+  entity_id: vacuum.narwal_freo_s_narwal_vacuum
+  schedule_id: 10
+  enabled: false
+```
+
+`timing` (the sensor's `timing` attribute) replaces the whole list instead. The string is `id-state-time-days-repeat-map-suction-water-sweep_type-sweep_times-mop_times-rooms`, entries separated by `;`. Days are 7 characters, Sunday first. State `1` is enabled, `0` disabled.
+
+There is no live map image for the Freo S. Room names come from the map property. The Lovelace card still lists those rooms; it hides locate and dock maintenance actions this model does not expose, and it offers only the clean modes the select entity has.
+
+### Live check script
+
+`scripts/freo_s_live.py` talks to a real robot with the same client. Credentials stay in the environment (or `scripts/.env`, which is gitignored). It never prints the password or the token.
+
+Read-only (status, rooms, schedules, one heartbeat):
+
+```bash
+pip install -r requirements.txt
+export NARWAL_EMAIL='you@example.com'
+export NARWAL_PASSWORD='your-password'
+export NARWAL_REGION=us   # us, il, eu, or cn. Default for this script: us
+# optional, required when the account has more than one ThingModel robot:
+# export NARWAL_DEVICE_ID='the 32-character device id'
+python scripts/freo_s_live.py
+```
+
+One read at a time: `status`, `map`, `schedules`, `heartbeat`, `map-grid` (downloads the map and prints only its size).
+
+Commands that move the robot or write schedules are separate and require `--yes`:
+
+```bash
+python scripts/freo_s_live.py recall --yes
+python scripts/freo_s_live.py pause --yes
+python scripts/freo_s_live.py resume --yes
+python scripts/freo_s_live.py stop --yes
+python scripts/freo_s_live.py start --rooms 5 --yes
+python scripts/freo_s_live.py set-schedule --id 10 --enabled false --yes
+```
+
+`start` and `set-schedule` change what the robot does. `recall` drives it home. Run them yourself, one at a time.
 
 ## Installation
 

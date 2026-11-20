@@ -13,13 +13,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import DOMAIN, PLATFORMS
+from .const import DOMAIN, PLATFORMS, PROTOCOL_THING, entry_protocol
 from .coordinator import NarwalCoordinator
 from .narwal_client import NarwalConnectionError
+from .thing_coordinator import ThingCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-NarwalConfigEntry: TypeAlias = ConfigEntry[NarwalCoordinator]
+NarwalConfigEntry: TypeAlias = ConfigEntry[NarwalCoordinator | ThingCoordinator]
 
 # Cache-bust the JS URL with the manifest version so HACS upgrades
 # force browsers to fetch the new file instead of serving stale JS
@@ -38,8 +39,12 @@ CARD_JS_PATH = Path(__file__).parent / "frontend" / "narwal-vacuum-card.js"
 async def async_setup_entry(hass: HomeAssistant, entry: NarwalConfigEntry) -> bool:
     """Set up Narwal from a config entry."""
     await _register_card(hass)
+    await _register_schedule_service(hass)
 
-    coordinator = NarwalCoordinator(hass, entry)
+    if entry_protocol(entry.data) == PROTOCOL_THING:
+        coordinator: NarwalCoordinator | ThingCoordinator = ThingCoordinator(hass, entry)
+    else:
+        coordinator = NarwalCoordinator(hass, entry)
     try:
         await coordinator.async_setup()
     except NarwalConnectionError as err:
@@ -48,6 +53,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: NarwalConfigEntry) -> bo
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+async def _register_schedule_service(hass: HomeAssistant) -> None:
+    """Whole-list schedule writes for Freo S. Other models get a clear error."""
+    from .thing_coordinator import SERVICE_SET_SCHEDULES, SET_SCHEDULES_SCHEMA, async_handle_set_schedules
+
+    if hass.services.has_service(DOMAIN, SERVICE_SET_SCHEDULES):
+        return
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_SCHEDULES,
+        async_handle_set_schedules,
+        schema=SET_SCHEDULES_SCHEMA,
+    )
 
 
 async def _register_card(hass: HomeAssistant) -> None:

@@ -20,15 +20,22 @@ from .const import (
     CONF_ACCESS_TOKEN,
     CONF_DEVICE_NAME,
     CONF_EMAIL,
+    CONF_FIRMWARE,
+    CONF_MODEL,
     CONF_PASSWORD,
+    CONF_PRODUCT_GROUP,
     CONF_PRODUCT_KEY,
+    CONF_PROTOCOL,
     CONF_REFRESH_TOKEN,
     CONF_REGION,
     CONF_USER_UUID,
     DOMAIN,
+    PROTOCOL_PROTOBUF,
+    PROTOCOL_THING,
     REGION_OPTIONS,
 )
 from .narwal_client import NarwalAuthError, NarwalCloud, NarwalCloudError, NarwalDevice
+from .narwal_client.thing_protocol import model_name, uses_thing_model
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -140,16 +147,30 @@ class NarwalConfigFlow(ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(_unique_id(device.product_key, device.device_name))
         self._abort_if_unique_id_configured()
         session = self._cloud.session  # type: ignore[union-attr]
+        thing = uses_thing_model(
+            product_key=device.product_key,
+            product_group=device.product_group,
+            thing_flag=device.thing_model,
+        )
+        reported_model = device.model or model_name(device.product_key, device.product_group)
+        data = {
+            CONF_EMAIL: self._email,
+            CONF_PASSWORD: self._password,
+            CONF_REGION: self._region,
+            CONF_PRODUCT_KEY: device.product_key,
+            CONF_DEVICE_NAME: device.device_name,
+            CONF_USER_UUID: session.user_uuid,
+            CONF_ACCESS_TOKEN: session.access_token,
+            CONF_REFRESH_TOKEN: session.refresh_token,
+            CONF_PROTOCOL: PROTOCOL_THING if thing else PROTOCOL_PROTOBUF,
+        }
+        if device.product_group:
+            data[CONF_PRODUCT_GROUP] = device.product_group
+        if reported_model:
+            data[CONF_MODEL] = reported_model
+        if device.firmware:
+            data[CONF_FIRMWARE] = device.firmware
         return self.async_create_entry(
-            title=device.name or device.model or f"Narwal {device.device_name[:8]}",
-            data={
-                CONF_EMAIL: self._email,
-                CONF_PASSWORD: self._password,
-                CONF_REGION: self._region,
-                CONF_PRODUCT_KEY: device.product_key,
-                CONF_DEVICE_NAME: device.device_name,
-                CONF_USER_UUID: session.user_uuid,
-                CONF_ACCESS_TOKEN: session.access_token,
-                CONF_REFRESH_TOKEN: session.refresh_token,
-            },
+            title=device.name or reported_model or f"Narwal {device.device_name[:8]}",
+            data=data,
         )

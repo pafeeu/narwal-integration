@@ -6,7 +6,7 @@ import json
 import logging
 import ssl
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, field
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -33,6 +33,43 @@ USER_INFO_PATH = "/user-server/v2/user/getUserInfo"
 DEVICE_LIST_PATH = "/user-device-platform-server/device-info/getDeviceInfoList"
 
 
+def _as_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in ("true", "1"):
+            return True
+        if lowered in ("false", "0"):
+            return False
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value in (0, 1):
+        return bool(value)
+    return None
+
+
+def _thing_flag(device: dict[str, Any]) -> bool | None:
+    """``switch_to_robothings`` when the device list actually carries it."""
+    flag = _flag_in(device)
+    if flag is not None:
+        return flag
+    params = device.get("application_user_params") or device.get("applicationUserParams")
+    if isinstance(params, str):
+        try:
+            params = json.loads(params)
+        except json.JSONDecodeError:
+            return None
+    if isinstance(params, dict):
+        return _flag_in(params)
+    return None
+
+
+def _flag_in(payload: dict[str, Any]) -> bool | None:
+    for key in ("switch_to_robothings", "switchToRobotThings"):
+        if key in payload:
+            return _as_bool(payload[key])
+    return None
+
+
 class NarwalCloudError(Exception):
     """General cloud API error."""
 
@@ -54,6 +91,9 @@ class NarwalDevice:
     name: str = ""
     model: str = ""
     firmware: str = ""
+    product_group: str = field(default="", compare=False)
+    # True/False when the cloud reported switch_to_robothings; None when absent.
+    thing_model: bool | None = field(default=None, compare=False)
 
     @property
     def label(self) -> str:
@@ -206,21 +246,25 @@ class NarwalCloud:
         if resp.get("code") != 0:
             raise NarwalCloudError(f"Device list failed: {resp.get('msg')}")
         result = resp.get("result") or {}
-        models = {
-            p.get("productId"): p.get("productModel", "")
+        products = {
+            p.get("productId"): p
             for p in result.get("productInfoList") or []
+            if isinstance(p, dict) and p.get("productId")
         }
         devices: list[NarwalDevice] = []
         for d in result.get("deviceInfoList") or []:
             device_name, product_key = d.get("deviceId"), d.get("productId")
             if not device_name or not product_key:
                 continue
+            info = products.get(product_key) or {}
             devices.append(NarwalDevice(
                 device_name=str(device_name),
                 product_key=str(product_key),
                 name=str(d.get("robotName") or ""),
-                model=str(models.get(product_key) or ""),
+                model=str(info.get("productModel") or ""),
                 firmware=str(d.get("firmwareVersion") or ""),
+                product_group=str(info.get("productGroup") or d.get("productGroup") or ""),
+                thing_model=_thing_flag(d),
             ))
         return devices
 

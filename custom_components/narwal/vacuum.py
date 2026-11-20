@@ -15,7 +15,15 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import NarwalConfigEntry
-from .const import CLEAN_MODE_MAP, FAN_SPEED_LIST, FAN_SPEED_MAP, FAN_SPEED_REVERSE, MOP_HUMIDITY_MAP
+from .bx3 import async_setup_bx3_vacuum
+from .const import (
+    CLEAN_MODE_MAP,
+    FAN_SPEED_LIST,
+    FAN_SPEED_MAP,
+    FAN_SPEED_REVERSE,
+    MOP_HUMIDITY_MAP,
+    PROTOCOL_THING,
+)
 from .coordinator import NarwalCoordinator
 from .entity import NarwalEntity
 from .narwal_client import CleanMode, FanLevel, MopHumidity
@@ -33,7 +41,16 @@ try:  # Home Assistant 2026.3+: native "clean area" (rooms mapped to HA areas)
 
     _CLEAN_AREA = VacuumEntityFeature.CLEAN_AREA
 except ImportError:  # pragma: no cover - older Home Assistant
-    Segment = None  # type: ignore[assignment,misc]
+    from dataclasses import dataclass
+
+    @dataclass(slots=True)
+    class Segment:  # type: ignore[no-redef]
+        """Stand-in used when this Home Assistant build has no clean-area API yet."""
+
+        id: str
+        name: str
+        group: str | None = None
+
     _CLEAN_AREA = VacuumEntityFeature(0)
 
 _LOGGER = logging.getLogger(__name__)
@@ -61,6 +78,9 @@ async def async_setup_entry(
     entry: NarwalConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
+    if entry.runtime_data.protocol == PROTOCOL_THING:
+        async_setup_bx3_vacuum(hass, entry.runtime_data, async_add_entities)
+        return
     async_add_entities([NarwalVacuum(entry.runtime_data)])
 
 
@@ -191,7 +211,7 @@ class NarwalVacuum(NarwalEntity, StateVacuumEntity):
     @callback
     def _check_segments_changed(self) -> None:
         """Raise HA's repair issue when the robot's rooms change after mapping."""
-        if Segment is None or self.registry_entry is None or self._segments_issue_raised:
+        if not _CLEAN_AREA or self.registry_entry is None or self._segments_issue_raised:
             return
         last_seen = self.last_seen_segments
         rooms = self.state_data.rooms

@@ -1,8 +1,12 @@
 """Constants for the Narwal integration."""
 
+from collections.abc import Mapping
+from typing import Any
+
 from homeassistant.const import Platform
 
 from .narwal_client.const import CleanMode, FanLevel, MopHumidity
+from .narwal_client.thing_protocol import PROTOCOL_PROTOBUF, PROTOCOL_THING, uses_thing_model
 
 DOMAIN = "narwal"
 
@@ -26,6 +30,10 @@ CONF_DEVICE_NAME = "device_name"
 CONF_USER_UUID = "user_uuid"
 CONF_ACCESS_TOKEN = "access_token"
 CONF_REFRESH_TOKEN = "refresh_token"
+CONF_PROTOCOL = "protocol"
+CONF_PRODUCT_GROUP = "product_group"
+CONF_MODEL = "model"
+CONF_FIRMWARE = "firmware"
 
 # Legacy keys (kept for migration from manual config)
 CONF_MQTT_USERNAME = "mqtt_username"
@@ -67,3 +75,19 @@ MOP_HUMIDITY_MAP: dict[str, MopHumidity] = {
     "normal": MopHumidity.NORMAL,
     "wet": MopHumidity.WET,
 }
+
+
+def entry_protocol(data: Mapping[str, Any]) -> str:
+    """Protocol for a config entry.
+
+    An explicit ``protocol`` value wins. Entries created before Freo S support
+    have none, so the product key and product group decide. Freo X Ultra stays
+    on protobuf; Freo S (BX3 / ``ZTM5lnVgLG``) uses ThingModel.
+    """
+    stored = data.get(CONF_PROTOCOL)
+    if stored in (PROTOCOL_PROTOBUF, PROTOCOL_THING):
+        return str(stored)
+    return PROTOCOL_THING if uses_thing_model(
+        product_key=str(data.get(CONF_PRODUCT_KEY) or ""),
+        product_group=str(data.get(CONF_PRODUCT_GROUP) or ""),
+    ) else PROTOCOL_PROTOBUF
