@@ -1,4 +1,27 @@
 {
+  "selector": {
+    "freo_clean_mode": {
+      "options": {
+        "Vacuum Only": "Tylko odkurzanie",
+        "Vacuum & Mop": "Odkurzanie i mop"
+      }
+    },
+    "freo_suction": {
+      "options": {
+        "Quiet": "Cicho",
+        "Normal": "Normalnie",
+        "Strong": "Mocno",
+        "Max": "Maksimum"
+      }
+    },
+    "freo_water": {
+      "options": {
+        "low": "Niski",
+        "medium": "Średni",
+        "high": "Wysoki"
+      }
+    }
+  },
   "options": {
     "step": {
       "init": {
@@ -164,11 +187,11 @@
     },
     "schedule_clean_once": {
       "name": "Zaplanuj jednorazowe sprzątanie Freo S",
-      "description": "Dodaje jeden włączony jednorazowy wpis. Integracja najpierw odczytuje listę i zapisuje ją w całości. Wyłączony jednorazowy wpis jest używany ponownie, jeśli istnieje. Godzina jest zapisywana jako zegar UTC, tak jak pokazuje ją robot.",
+      "description": "Dodaje jeden włączony jednorazowy wpis. Integracja najpierw odczytuje listę i zapisuje ją w całości. Wyłączony jednorazowy wpis jest używany ponownie, jeśli istnieje. Data i godzina są zapisywane jako zegar UTC. Zrzut ruchu nie potwierdza, czy robot pokazuje ten sam zegar.",
       "fields": {
         "entity_id": {"name": "Odkurzacz", "description": "Encja odkurzacza Freo S."},
         "date": {"name": "Data", "description": "Data w formacie RRRR-MM-DD."},
-        "time": {"name": "Godzina", "description": "Godzina w formacie GG:MM."},
+        "time": {"name": "Godzina", "description": "Godzina. Zapisywana jako UTC. Selektor czasu może dodać sekundy."},
         "rooms": {"name": "Pokoje", "description": "Identyfikatory albo nazwy pokoi z mapy."},
         "areas": {"name": "Obszary", "description": "Identyfikatory obszarów Home Assistant zmapowanych na pokoje tego odkurzacza."},
         "mode": {"name": "Tryb", "description": "Vacuum Only albo Vacuum & Mop. Bez wartości używany jest domyślny tryb."},

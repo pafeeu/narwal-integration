@@ -188,6 +188,10 @@ def test_one_time_schedule_overwrites_the_first_disabled_once_row() -> None:
     original = timing_inner(
         _load("get_reported_clean_all.json")["responses"][0]["payload"]["payload"]["clean"]["timing"]["value"]
     )
+    # UTC printout of the captured epochs. The app's displayed clock is not in the capture.
+    assert once_timestamp("2026-10-03", "10:30") == 1791023400
+    assert once_timestamp("2026-10-03", "10:30:00") == 1791023400
+    assert once_timestamp("2026-09-21", "16:45") == 1790009100
     updated = upsert_one_time(
         parse_timing_value(original),
         when=once_timestamp("2026-10-03", "10:30"),
@@ -205,6 +209,23 @@ def test_one_time_schedule_overwrites_the_first_disabled_once_row() -> None:
     kept = delete_schedule_id(parse_timing_value(updated), 11)
     assert all(entry.id != 11 for entry in parse_timing_value(kept))
     assert encode_schedules(parse_timing_value(kept)) == kept
+
+
+def test_service_translations_cover_every_services_yaml_field() -> None:
+    import yaml
+
+    root = Path(__file__).parent.parent / "custom_components" / "narwal"
+    services = yaml.safe_load((root / "services.yaml").read_text())
+    assert services
+    for filename in ("strings.json", "translations/en.json", "translations/pl.json"):
+        translated = json.loads((root / filename).read_text())["services"]
+        for service, spec in services.items():
+            entry = translated[service]
+            assert entry["name"]
+            assert entry["description"]
+            for field in spec["fields"]:
+                assert translated[service]["fields"][field]["name"]
+                assert translated[service]["fields"][field]["description"]
 
 
 def test_schedule_rewrite_matches_the_captured_set() -> None:

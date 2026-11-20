@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -14,6 +15,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.service import async_get_all_descriptions
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.narwal.const import DOMAIN
@@ -318,3 +320,27 @@ async def test_unknown_fault_keeps_the_raw_code(hass: HomeAssistant, freo) -> No
     error = hass.states.get(_entity(hass, "sensor", "error"))
     assert error.state == "unknown_fault"
     assert error.attributes["code"] == 7
+
+
+async def test_every_registered_service_has_a_services_yaml_entry(
+    hass: HomeAssistant, freo, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Home Assistant logs an error when a domain registers services without services.yaml."""
+    caplog.set_level(logging.ERROR)
+    descriptions = await async_get_all_descriptions(hass)
+    assert "Failed to load services.yaml for integration: narwal" not in caplog.text
+    registered = set(hass.services.async_services()[DOMAIN])
+    assert registered == {"set_schedules", "schedule_clean_once", "delete_schedule"}
+    assert registered <= set(descriptions["narwal"])
+    once = descriptions["narwal"]["schedule_clean_once"]["fields"]
+    assert once["date"]["selector"]["date"] == {}
+    assert once["time"]["selector"]["time"] == {}
+    assert once["rooms"]["selector"]["text"]["multiple"] is True
+    assert once["areas"]["selector"]["area"]["multiple"] is True
+    assert once["mode"]["selector"]["select"]["options"] == ["Vacuum Only", "Vacuum & Mop"]
+    assert once["suction"]["selector"]["select"]["options"] == ["Quiet", "Normal", "Strong", "Max"]
+    assert once["water"]["selector"]["select"]["options"] == ["low", "medium", "high"]
+    assert once["passes"]["selector"]["number"]["min"] == 1
+    assert once["passes"]["selector"]["number"]["max"] == 2
+    for name in registered:
+        assert descriptions["narwal"][name]["fields"]

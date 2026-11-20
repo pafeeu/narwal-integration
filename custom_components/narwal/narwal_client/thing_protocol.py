@@ -227,7 +227,9 @@ class ThingSchedule:
     ``state`` 1 is enabled, 0 disabled, 2 shown as invalid in the app.
     ``days`` is 7 characters, index 0 = Sunday.
     ``time`` is ``HH:MM`` for a weekly entry. A one-shot entry (repeat 0,
-    days ``0000000``) stores an epoch whose UTC clock is the displayed time.
+    days ``0000000``) stores a unix epoch. Printing that epoch in UTC gives
+    10:30 on 10/3 for id 8 and 16:45 on 9/21 for id 9. The capture does not
+    include the clock the app showed, so that match is not proven.
     ``sweep_type`` / ``sweep_times`` / ``mop_times`` are the three fields the
     capture left unnamed; 0 in the first of them matches a vacuum-only task.
     """
@@ -360,10 +362,15 @@ def set_schedule_enabled(entries: list[ThingSchedule], schedule_id: int, enabled
 def once_timestamp(date: str, clock: str) -> int:
     """Epoch for a one-time entry.
 
-    The robot shows the UTC wall clock of this timestamp as the schedule time.
-    ``date`` is ``YYYY-MM-DD`` and ``clock`` is ``HH:MM``.
+    ``date`` is ``YYYY-MM-DD``. ``clock`` is ``HH:MM`` or ``HH:MM:SS`` (the
+    Home Assistant time selector sends seconds). The clock is tagged as UTC,
+    which is what makes captured ids 8 and 9 print as 10:30 10/3 and
+    16:45 9/21. The capture has no app screenshot of those times.
     """
-    parsed = datetime.strptime(f"{date.strip()} {clock.strip()}", "%Y-%m-%d %H:%M")
+    text = clock.strip()
+    if len(text) == 8 and text[2] == ":" and text[5] == ":":
+        text = text[:5]
+    parsed = datetime.strptime(f"{date.strip()} {text}", "%Y-%m-%d %H:%M")
     return int(parsed.replace(tzinfo=timezone.utc).timestamp())
 
 

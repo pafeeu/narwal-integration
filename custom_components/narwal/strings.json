@@ -1,4 +1,27 @@
 {
+  "selector": {
+    "freo_clean_mode": {
+      "options": {
+        "Vacuum Only": "Vacuum Only",
+        "Vacuum & Mop": "Vacuum & Mop"
+      }
+    },
+    "freo_suction": {
+      "options": {
+        "Quiet": "Quiet",
+        "Normal": "Normal",
+        "Strong": "Strong",
+        "Max": "Max"
+      }
+    },
+    "freo_water": {
+      "options": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {
@@ -295,7 +318,7 @@
     },
     "schedule_clean_once": {
       "name": "Schedule a one-time Freo S clean",
-      "description": "Add one enabled one-time clean to the Freo S schedule. The integration reads the current list first and writes the whole list back. A disabled one-time entry is reused when one exists. The time is stored as a UTC wall clock, which is how the robot displays it.",
+      "description": "Add one enabled one-time clean to the Freo S schedule. The integration reads the current list first and writes the whole list back. A disabled one-time entry is reused when one exists. The date and time are stored as a UTC wall clock. Whether the robot shows that same clock is not confirmed by the capture.",
       "fields": {
         "entity_id": {
           "name": "Vacuum",
@@ -307,7 +330,7 @@
         },
         "time": {
           "name": "Time",
-          "description": "Time as HH:MM. The robot shows this clock time."
+          "description": "Clock time. Stored as UTC. The time picker may include seconds."
         },
         "rooms": {
           "name": "Rooms",

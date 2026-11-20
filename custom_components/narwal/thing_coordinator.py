@@ -74,7 +74,7 @@ SERVICE_DELETE_SCHEDULE = "delete_schedule"
 SET_SCHEDULES_SCHEMA = vol.Schema({
     vol.Required("entity_id"): cv.entity_id,
     vol.Optional("timing"): cv.string,
-    vol.Optional("schedule_id"): int,
+    vol.Optional("schedule_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
     vol.Optional("enabled"): bool,
 })
 
@@ -92,7 +92,7 @@ SCHEDULE_ONCE_SCHEMA = vol.Schema({
 
 DELETE_SCHEDULE_SCHEMA = vol.Schema({
     vol.Required("entity_id"): cv.entity_id,
-    vol.Required("schedule_id"): int,
+    vol.Required("schedule_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
 })
 
 # Map last, so the state published at the end of setup already has rooms.
