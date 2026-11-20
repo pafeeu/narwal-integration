@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+from typing import Any
 
 import voluptuous as vol
 
@@ -32,7 +33,15 @@ from .const import (
     CONF_REFRESH_TOKEN,
     CONF_REGION,
     CONF_USER_UUID,
+    DEFAULT_CLEAN_MODE,
+    DEFAULT_PASSES,
+    DEFAULT_SUCTION,
+    DEFAULT_WATER,
     DOMAIN,
+    OPT_CLEAN_MODE,
+    OPT_PASSES,
+    OPT_SUCTION,
+    OPT_WATER,
     PROTOCOL_THING,
 )
 from .coordinator import MAX_CONSECUTIVE_FAILURES, POLL_INTERVAL_ACTIVE, POLL_INTERVAL_IDLE
@@ -41,10 +50,17 @@ from .narwal_client.const import MQTT_BROKER
 from .narwal_client.thing_client import ThingClient
 from .narwal_client.thing_protocol import (
     ThingState,
+    SUCTION_LEVELS,
+    SWEEP_BY_TYPE,
+    SWEEP_TYPES,
+    WATER_LEVELS,
+    delete_schedule_id,
     encode_schedules,
     model_name,
+    once_timestamp,
     parse_timing_value,
     set_schedule_enabled,
+    upsert_one_time,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -52,12 +68,31 @@ _LOGGER = logging.getLogger(__name__)
 HEARTBEAT_INTERVAL = timedelta(seconds=3)
 CONF_THING_CACHE = "thing_cache"
 SERVICE_SET_SCHEDULES = "set_schedules"
+SERVICE_SCHEDULE_ONCE = "schedule_clean_once"
+SERVICE_DELETE_SCHEDULE = "delete_schedule"
 
 SET_SCHEDULES_SCHEMA = vol.Schema({
     vol.Required("entity_id"): cv.entity_id,
     vol.Optional("timing"): cv.string,
     vol.Optional("schedule_id"): int,
     vol.Optional("enabled"): bool,
+})
+
+SCHEDULE_ONCE_SCHEMA = vol.Schema({
+    vol.Required("entity_id"): cv.entity_id,
+    vol.Required("date"): cv.string,
+    vol.Required("time"): cv.string,
+    vol.Optional("rooms"): [vol.Any(str, int)],
+    vol.Optional("areas"): [cv.string],
+    vol.Optional("mode"): cv.string,
+    vol.Optional("suction"): cv.string,
+    vol.Optional("water"): cv.string,
+    vol.Optional("passes"): vol.All(vol.Coerce(int), vol.Range(min=1, max=2)),
+})
+
+DELETE_SCHEDULE_SCHEMA = vol.Schema({
+    vol.Required("entity_id"): cv.entity_id,
+    vol.Required("schedule_id"): int,
 })
 
 # Map last, so the state published at the end of setup already has rooms.
@@ -82,12 +117,13 @@ class ThingCoordinator(DataUpdateCoordinator[ThingState]):
         self._heartbeat_unsub = None
         self._heartbeat_running = False
         self._defer_updates = False
-        # Preferences applied on the next start_sweep. None follows the robot.
-        self.suction_level: int | None = None
-        self.water_level: int | None = None
-        self.sweep_type: int = 2
-        self.passes: int = 1
+        # Preferences for the next start_sweep. Loaded from the options flow.
+        self.suction_level: int = SUCTION_LEVELS[DEFAULT_SUCTION]
+        self.water_level: int = WATER_LEVELS[DEFAULT_WATER]
+        self.sweep_type: int = SWEEP_TYPES[DEFAULT_CLEAN_MODE]
+        self.passes: int = DEFAULT_PASSES
         self._setup_client(entry)
+        self.load_options()
 
     def _setup_client(self, entry: ConfigEntry) -> None:
         region = entry.data.get(CONF_REGION, "us")
@@ -124,17 +160,37 @@ class ThingCoordinator(DataUpdateCoordinator[ThingState]):
     def firmware(self) -> str | None:
         return self.config_entry.data.get(CONF_FIRMWARE) or None
 
+    def load_options(self) -> None:
+        """Apply the options-flow defaults. Missing keys use the Freo S defaults."""
+        opts = self.config_entry.options
+        mode = str(opts.get(OPT_CLEAN_MODE, DEFAULT_CLEAN_MODE))
+        self.sweep_type = SWEEP_TYPES.get(mode, SWEEP_TYPES[DEFAULT_CLEAN_MODE])
+        try:
+            passes = int(opts.get(OPT_PASSES, DEFAULT_PASSES))
+        except (TypeError, ValueError):
+            passes = DEFAULT_PASSES
+        self.passes = min(2, max(1, passes))
+        suction = str(opts.get(OPT_SUCTION, DEFAULT_SUCTION))
+        self.suction_level = SUCTION_LEVELS.get(suction, SUCTION_LEVELS[DEFAULT_SUCTION])
+        water = str(opts.get(OPT_WATER, DEFAULT_WATER))
+        self.water_level = WATER_LEVELS.get(water, WATER_LEVELS[DEFAULT_WATER])
+
+    def set_pref(self, **changes: Any) -> None:
+        """Store one default and use it for the next clean."""
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            options={**self.config_entry.options, **changes},
+        )
+        self.load_options()
+
     def effective_suction(self) -> int:
-        if self.suction_level is not None:
-            return self.suction_level
-        reported = self.client.state.suction
-        return reported if reported is not None else 2
+        return self.suction_level
 
     def effective_water(self) -> int:
-        if self.water_level is not None:
-            return self.water_level
-        reported = self.client.state.water
-        return reported if reported is not None else 2
+        return self.water_level
+
+    def clean_mode_name(self) -> str:
+        return SWEEP_BY_TYPE.get(self.sweep_type, DEFAULT_CLEAN_MODE)
 
     async def async_setup(self) -> None:
         """Connect and load state. A sleeping robot must not fail setup."""
@@ -145,6 +201,9 @@ class ThingCoordinator(DataUpdateCoordinator[ThingState]):
         # Otherwise a status reply can publish entities with no rooms yet.
         self._defer_updates = True
         self.client.on_state_update = self._on_state_update
+        self.config_entry.async_on_unload(
+            self.config_entry.add_update_listener(self._async_options_updated)
+        )
         await self.client.connect()
         await self._refresh(setup=True)
         self._defer_updates = False
@@ -209,6 +268,11 @@ class ThingCoordinator(DataUpdateCoordinator[ThingState]):
             _LOGGER.debug("ThingModel heartbeat failed", exc_info=True)
         finally:
             self._heartbeat_running = False
+
+    async def _async_options_updated(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Apply options without reloading the MQTT connection."""
+        self.load_options()
+        self.async_set_updated_data(self.client.state)
 
     def _on_state_update(self, state: ThingState) -> None:
         if self._defer_updates:
@@ -306,12 +370,100 @@ class ThingCoordinator(DataUpdateCoordinator[ThingState]):
             return
         await self.client.write_timing(updated)
 
+    async def async_schedule_once(
+        self,
+        *,
+        date: str,
+        clock: str,
+        rooms: list[int],
+        suction: int,
+        water: int,
+        sweep_type: int,
+        passes: int,
+    ) -> None:
+        """Read the list, enable one one-shot row, write the whole list back."""
+        if not rooms:
+            raise NarwalCommandError("A one-time clean needs at least one room")
+        map_id = self.client.state.map_id
+        if not map_id:
+            raise NarwalCommandError("The robot has not reported its map yet")
+        current = await self.client.read_timing()
+        try:
+            updated = upsert_one_time(
+                parse_timing_value(current),
+                when=once_timestamp(date, clock),
+                rooms=rooms,
+                map_id=map_id,
+                suction=suction,
+                water=water,
+                sweep_type=sweep_type,
+                passes=passes,
+            )
+        except ValueError as err:
+            raise NarwalCommandError(str(err)) from err
+        await self.client.write_timing(updated)
+
+    async def async_delete_schedule(self, schedule_id: int) -> None:
+        """Read the list, drop one entry, write the rest back."""
+        current = await self.client.read_timing()
+        try:
+            updated = delete_schedule_id(parse_timing_value(current), schedule_id)
+        except ValueError as err:
+            raise NarwalCommandError(str(err)) from err
+        await self.client.write_timing(updated)
+
     async def async_shutdown(self) -> None:
         if self._heartbeat_unsub is not None:
             self._heartbeat_unsub()
             self._heartbeat_unsub = None
         await super().async_shutdown()
         await self.client.disconnect()
+
+
+def _coordinator_for_entity(hass: HomeAssistant, entity_id: str) -> ThingCoordinator:
+    entity = er.async_get(hass).async_get(entity_id)
+    entry = hass.config_entries.async_get_entry(entity.config_entry_id) if entity and entity.config_entry_id else None
+    coordinator = entry.runtime_data if entry is not None else None
+    if not isinstance(coordinator, ThingCoordinator):
+        raise HomeAssistantError("Schedules can be written on a Narwal Freo S only.")
+    return coordinator
+
+
+def _rooms_from_call(coordinator: ThingCoordinator, data: dict[str, Any], entity_id: str) -> list[int]:
+    """Room ids from names, ids, and Home Assistant areas mapped on the vacuum."""
+    hass = coordinator.hass
+    found: list[int] = []
+    entity = er.async_get(hass).async_get(entity_id)
+    mapping = {}
+    if entity is not None:
+        mapping = (entity.options.get("vacuum") or {}).get("area_mapping") or {}
+    for area_id in data.get("areas") or []:
+        segments = mapping.get(area_id)
+        if not segments:
+            raise NarwalCommandError(
+                f"Area {area_id} is not mapped on this vacuum. "
+                "Map vacuum segments to areas in the vacuum entity settings first."
+            )
+        found.extend(int(segment) for segment in segments)
+    for item in data.get("rooms") or []:
+        text = str(item).strip()
+        if text.isdigit():
+            found.append(int(text))
+            continue
+        matches = [
+            room.room_id for room in coordinator.client.state.rooms
+            if room.display_name.casefold() == text.casefold()
+        ]
+        if len(matches) != 1:
+            known = [room.display_name for room in coordinator.client.state.rooms]
+            raise NarwalCommandError(f"Room {text!r} did not match one map room; known names: {known}")
+        found.append(matches[0])
+    # Keep order, drop duplicates.
+    unique: list[int] = []
+    for room_id in found:
+        if room_id not in unique:
+            unique.append(room_id)
+    return unique
 
 
 async def async_handle_set_schedules(call: ServiceCall) -> None:
@@ -321,12 +473,7 @@ async def async_handle_set_schedules(call: ServiceCall) -> None:
     ``enabled``. Both paths write the whole list back. The read happens first,
     so a failed read never writes a partial list.
     """
-    hass = call.hass
-    entity = er.async_get(hass).async_get(call.data["entity_id"])
-    entry = hass.config_entries.async_get_entry(entity.config_entry_id) if entity and entity.config_entry_id else None
-    coordinator = entry.runtime_data if entry is not None else None
-    if not isinstance(coordinator, ThingCoordinator):
-        raise HomeAssistantError("Schedules can be written on a Narwal Freo S only.")
+    coordinator = _coordinator_for_entity(call.hass, call.data["entity_id"])
     timing = call.data.get("timing")
     schedule_id = call.data.get("schedule_id")
     try:
@@ -340,6 +487,46 @@ async def async_handle_set_schedules(call: ServiceCall) -> None:
             await coordinator.async_set_schedule_enabled(int(schedule_id), bool(call.data["enabled"]))
         else:
             raise NarwalCommandError("Pass timing, or schedule_id and enabled")
+    except NarwalCommandError as err:
+        raise HomeAssistantError(str(err)) from err
+    coordinator.async_set_updated_data(coordinator.client.state)
+
+
+async def async_handle_schedule_once(call: ServiceCall) -> None:
+    """Add or reuse one enabled one-shot schedule entry."""
+    coordinator = _coordinator_for_entity(call.hass, call.data["entity_id"])
+    data = call.data
+    try:
+        rooms = _rooms_from_call(coordinator, data, data["entity_id"])
+        mode = data.get("mode", coordinator.clean_mode_name())
+        if mode not in SWEEP_TYPES:
+            raise NarwalCommandError(f"Unknown mode {mode!r}; use one of {list(SWEEP_TYPES)}")
+        suction_name = data.get("suction", {v: k for k, v in SUCTION_LEVELS.items()}.get(coordinator.suction_level, DEFAULT_SUCTION))
+        if suction_name not in SUCTION_LEVELS:
+            raise NarwalCommandError(f"Unknown suction {suction_name!r}; use one of {list(SUCTION_LEVELS)}")
+        water_name = data.get("water", {v: k for k, v in WATER_LEVELS.items()}.get(coordinator.water_level, DEFAULT_WATER))
+        if water_name not in WATER_LEVELS:
+            raise NarwalCommandError(f"Unknown water {water_name!r}; use one of {list(WATER_LEVELS)}")
+        passes = int(data.get("passes", coordinator.passes))
+        await coordinator.async_schedule_once(
+            date=data["date"],
+            clock=data["time"],
+            rooms=rooms,
+            suction=SUCTION_LEVELS[suction_name],
+            water=WATER_LEVELS[water_name],
+            sweep_type=SWEEP_TYPES[mode],
+            passes=passes,
+        )
+    except NarwalCommandError as err:
+        raise HomeAssistantError(str(err)) from err
+    coordinator.async_set_updated_data(coordinator.client.state)
+
+
+async def async_handle_delete_schedule(call: ServiceCall) -> None:
+    """Remove one schedule entry by rewriting the rest of the list."""
+    coordinator = _coordinator_for_entity(call.hass, call.data["entity_id"])
+    try:
+        await coordinator.async_delete_schedule(int(call.data["schedule_id"]))
     except NarwalCommandError as err:
         raise HomeAssistantError(str(err)) from err
     coordinator.async_set_updated_data(coordinator.client.state)

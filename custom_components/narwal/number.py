@@ -85,24 +85,18 @@ class NarwalCleanPasses(NarwalEntity, RestoreNumber):
         self.coordinator.clean_passes = int(value)
         self.async_write_ha_state()
 
-class Bx3CleanPasses(Bx3Entity, RestoreNumber):
-    """How many passes ``start_sweep`` asks for. Kept in Home Assistant."""
+class Bx3CleanPasses(Bx3Entity, NumberEntity):
+    """How many passes ``start_sweep`` asks for. 1 or 2, from the options flow."""
 
     _attr_translation_key = "clean_passes"
     _attr_icon = "mdi:repeat"
     _attr_native_min_value = 1
-    _attr_native_max_value = 3
+    _attr_native_max_value = 2
     _attr_native_step = 1
     _attr_mode = NumberMode.BOX
 
     def __init__(self, coordinator: ThingCoordinator) -> None:
         super().__init__(coordinator, "clean_passes")
-
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        last = await self.async_get_last_number_data()
-        if last and last.native_value:
-            self.coordinator.passes = int(last.native_value)
 
     @property
     def available(self) -> bool:
@@ -113,7 +107,8 @@ class Bx3CleanPasses(Bx3Entity, RestoreNumber):
         return float(self.coordinator.passes)
 
     async def async_set_native_value(self, value: float) -> None:
-        self.coordinator.passes = int(value)
+        passes = min(2, max(1, int(value)))
+        self.coordinator.set_pref(passes=passes)
         self.async_write_ha_state()
 
 

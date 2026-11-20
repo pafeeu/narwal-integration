@@ -18,7 +18,12 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.narwal.const import DOMAIN
 from custom_components.narwal.narwal_client.thing_client import ThingClient
-from custom_components.narwal.narwal_client.thing_faults import fault_text
+from custom_components.narwal.narwal_client.thing_protocol import (
+    delete_schedule_id,
+    once_timestamp,
+    parse_timing_value,
+    upsert_one_time,
+)
 
 from .conftest import FakeThing
 
@@ -101,13 +106,14 @@ async def test_freo_s_states(hass: HomeAssistant, freo) -> None:
     assert state.attributes["rooms"][5] == "Wejście"
     assert state.attributes["map_id"] == 1779376970
     assert hass.states.get(_entity(hass, "sensor", "battery")).state == "100"
-    assert hass.states.get(_entity(hass, "sensor", "error")).state == "No error"
+    assert hass.states.get(_entity(hass, "sensor", "error")).state == "no_error"
     assert hass.states.get(_entity(hass, "sensor", "schedules")).state == "2"
     assert hass.states.get(_entity(hass, "binary_sensor", "docked")).state == "on"
     assert hass.states.get(_entity(hass, "binary_sensor", "charging")).state == "off"
     assert hass.states.get(_entity(hass, "binary_sensor", "problem")).state == "off"
     assert hass.states.get(_entity(hass, "select", "water_level")).state == "medium"
-    assert hass.states.get(_entity(hass, "select", "clean_mode")).state == "Vacuum & Mop"
+    assert hass.states.get(_entity(hass, "select", "clean_mode")).state == "Vacuum Only"
+    assert state.attributes["suction_applies_to"] == "next_clean"
     assert hass.states.get(_entity(hass, "sensor", "elapsed_time")).state == "3"
     assert hass.states.get(_entity(hass, "sensor", "cleaned_area")).state == "3"
     # Protobuf-only entities stay off this device.
@@ -127,7 +133,7 @@ async def test_start_pause_stop_and_dock(hass: HomeAssistant, freo) -> None:
     started = _invokes(freo, "start_sweep")[-1]
     assert started["area_ids"] == [1, 4, 5, 6, 7, 8]
     assert started["map_id"] == 1779376970
-    assert started["sweep_type"] == 2
+    assert started["sweep_type"] == 0
     assert started["suction_level"] == 2
     assert started["water_level"] == 2
 
@@ -273,13 +279,42 @@ async def test_status_6_is_docked_and_current_room_is_a_name(hass: HomeAssistant
     assert hass.states.get(_entity(hass, "sensor", "current_room")).state == "unknown"
 
 
+async def test_one_time_schedule_reuses_a_disabled_entry(hass: HomeAssistant, freo) -> None:
+    vacuum = _entity(hass, "vacuum", "vacuum")
+    await hass.services.async_call(
+        "narwal", "schedule_clean_once",
+        {"entity_id": vacuum, "date": "2026-10-03", "time": "10:30", "rooms": ["Kuchnia", 1]},
+        blocking=True,
+    )
+    written = [call for call in freo.calls if call[0] == "set"][-1][1]
+    inner = json.loads(written["clean"]["timing"]["value"])["time"]
+    entries = parse_timing_value(inner)
+    reused = next(entry for entry in entries if entry.id == 8)
+    assert reused.state == 1
+    assert reused.repeat == 0
+    assert reused.days == "0000000"
+    assert reused.time == str(once_timestamp("2026-10-03", "10:30"))
+    assert reused.rooms == [6, 1]
+    assert reused.sweep_type == 0
+    assert any(entry.id == 9 and entry.state == 0 for entry in entries)
+
+    await hass.services.async_call(
+        "narwal", "delete_schedule",
+        {"entity_id": vacuum, "schedule_id": 10},
+        blocking=True,
+    )
+    deleted = json.loads([call for call in freo.calls if call[0] == "set"][-1][1]["clean"]["timing"]["value"])["time"]
+    assert all(entry.id != 10 for entry in parse_timing_value(deleted))
+    await hass.async_block_till_done()
+    lines = hass.states.get(_entity(hass, "sensor", "schedules")).attributes["lines"]
+    assert any(str(line).startswith("8 ") for line in lines)
+
+
 async def test_unknown_fault_keeps_the_raw_code(hass: HomeAssistant, freo) -> None:
     client = freo.coordinator.client
     client.state.robot_status["fault"] = 7
     freo.coordinator.async_set_updated_data(client.state)
     await hass.async_block_till_done()
     error = hass.states.get(_entity(hass, "sensor", "error"))
-    assert error.state == fault_text(7, "en")
+    assert error.state == "unknown_fault"
     assert error.attributes["code"] == 7
-    assert error.attributes["message_pl"] == fault_text(7, "pl")
-    assert error.state != "Fault 7"

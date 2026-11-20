@@ -99,6 +99,62 @@ python scripts/freo_s_live.py set-schedule --id 10 --enabled false --yes
 
 `start` and `set-schedule` change what the robot does. `recall` drives it home. Run them yourself, one at a time.
 
+Suction and water are stored for the **next** clean. The capture has no property `set` and no action that changes them while a clean is already running. The vacuum attributes `suction_applies_to` and `water_applies_to` are `next_clean`.
+
+### Defaults
+
+On a Freo S entry: **Settings → Devices & services → Narwal Robot Vacuum → Configure**.
+
+| Option | Default |
+|---|---|
+| Clean mode | Vacuum Only |
+| Passes | 1 (allowed 1–2) |
+| Suction | Normal |
+| Water | medium |
+
+These are used by Start, Clean area, and a one-time schedule when that call does not pass its own values. The clean-mode, suction, water, and passes entities edit the same options.
+
+### Clean area
+
+Home Assistant 2026.3 and newer:
+
+1. **Settings → Devices & services → Entities**
+2. Open the Narwal vacuum entity
+3. Select the cogwheel
+4. Select **Map vacuum segments to areas**
+5. Match each robot room to a Home Assistant area and save
+
+Then use the action **Clean area with vacuum cleaner** (`vacuum.clean_area`). Area ids are under **Settings → Areas, labels & zones** → the area → edit → Area ID.
+
+The integration must be running a Home Assistant build that includes `VacuumEntityFeature.CLEAN_AREA` (2026.3+). This repository's tests run on the version installed with `requirements_test.txt`, which may be older; the entity method is still there.
+
+### Schedules
+
+The Schedules sensor state is how many entries are enabled. Attributes:
+
+- `lines`: one readable row per entry
+- `schedules`: id, enabled, time, days, rooms, room names, suction, water
+- `timing`: the raw list the robot stores
+
+```yaml
+# One-time clean. Reuses a disabled one-time row when one exists.
+action: narwal.schedule_clean_once
+data:
+  entity_id: vacuum.narwal_freo_s_narwal_vacuum
+  date: "2026-10-03"
+  time: "10:30"
+  rooms: ["Kuchnia", 1]
+  # areas: ["kitchen"]   # Home Assistant area ids already mapped on this vacuum
+  # mode, suction, water, passes are optional
+
+action: narwal.delete_schedule
+data:
+  entity_id: vacuum.narwal_freo_s_narwal_vacuum
+  schedule_id: 10
+```
+
+Both read the current list first and write the whole list back. The time of a one-time entry is stored as a UTC wall clock, which is the clock the robot displays. Deleting the last remaining entry is refused; disable it with `narwal.set_schedules` instead.
+
 ## Installation
 
 ### HACS (Recommended)

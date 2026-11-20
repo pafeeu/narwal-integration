@@ -1,26 +1,189 @@
 {
+  "options": {
+    "step": {
+      "init": {
+        "title": "Domyślne sprzątanie Freo S",
+        "description": "Używane, gdy sprzątanie startuje bez własnego trybu, siły ssania, poziomu wody albo liczby przejść, także przy akcji Clean area z asystenta głosowego. Siła ssania i woda dotyczą następnego sprzątania. Zmiana w trakcie trwającego sprzątania nie jest wysyłana do robota.",
+        "data": {
+          "clean_mode": "Domyślny tryb",
+          "passes": "Domyślna liczba przejść",
+          "suction": "Domyślna siła ssania",
+          "water": "Domyślny poziom wody"
+        }
+      }
+    }
+  },
   "entity": {
+    "vacuum": {
+      "narwal": {
+        "name": "Odkurzacz Narwal",
+        "state_attributes": {
+          "suction_applies_to": {
+            "name": "Siła ssania dotyczy",
+            "state": {"next_clean": "Następnego sprzątania"}
+          },
+          "water_applies_to": {
+            "name": "Woda dotyczy",
+            "state": {"next_clean": "Następnego sprzątania"}
+          }
+        }
+      }
+    },
     "sensor": {
       "battery": {"name": "Bateria"},
       "status": {"name": "Status"},
-      "error": {"name": "Błąd"},
+      "error": {
+        "name": "Błąd",
+        "state": {
+          "no_error": "Brak błędu",
+          "unknown_fault": "Nieznany błąd"
+        }
+      },
       "elapsed_time": {"name": "Czas sprzątania"},
+      "remaining_time": {"name": "Pozostały czas"},
       "cleaned_area": {"name": "Wyczyszczona powierzchnia"},
       "progress": {"name": "Postęp sprzątania"},
       "current_room": {"name": "Bieżący pokój"},
-      "schedules": {"name": "Harmonogramy"}
+      "schedules": {"name": "Harmonogramy"},
+      "consumables_due": {"name": "Wymagana konserwacja"},
+      "clean_water_tank": {
+        "name": "Zbiornik czystej wody",
+        "state": {
+          "normal": "W normie",
+          "empty": "Pusty",
+          "not_installed": "Brak",
+          "abnormal": "Nieprawidłowy"
+        }
+      },
+      "dirty_water_tank": {
+        "name": "Zbiornik brudnej wody",
+        "state": {
+          "normal": "W normie",
+          "filled_or_not_installed": "Pełny lub brak",
+          "abnormal": "Nieprawidłowy"
+        }
+      },
+      "dust_bin": {
+        "name": "Pojemnik na kurz",
+        "state": {
+          "normal": "W normie",
+          "not_installed": "Brak",
+          "abnormal": "Nieprawidłowy",
+          "suggest_clean_up": "Do opróżnienia"
+        }
+      },
+      "detergent": {
+        "name": "Detergent",
+        "state": {
+          "installed_and_not_empty": "W normie",
+          "uninstalled": "Brak",
+          "installed_and_empty": "Pusty",
+          "running_out": "Na wyczerpaniu",
+          "not_using": "Nieużywany"
+        }
+      }
     },
     "binary_sensor": {
       "charging": {"name": "Ładowanie"},
       "docked": {"name": "W stacji"},
-      "problem": {"name": "Problem"}
+      "problem": {"name": "Problem"},
+      "maintenance_due": {"name": "Wymagana konserwacja"}
+    },
+    "button": {
+      "locate": {"name": "Zlokalizuj"},
+      "wake": {"name": "Obudź"},
+      "wash_mop": {"name": "Myj mopy"},
+      "dry_mop": {"name": "Susz mopy"},
+      "wash_and_dry_mop": {"name": "Myj i susz mopy"},
+      "empty_dustbin": {"name": "Opróżnij pojemnik"}
+    },
+    "camera": {
+      "map": {"name": "Mapa"}
     },
     "select": {
+      "clean_mode": {
+        "name": "Tryb sprzątania",
+        "description": "Wysyłany przy następnym sprzątaniu. Domyślnie samo odkurzanie."
+      },
       "water_level": {
         "name": "Poziom wody",
+        "description": "Wysyłany przy następnym sprzątaniu. Zmiana w trakcie trwającego sprzątania nie wpływa na bieżące zadanie.",
         "state": {"low": "Niski", "medium": "Średni", "high": "Wysoki"}
       },
-      "clean_mode": {"name": "Tryb sprzątania"}
+      "mop_humidity": {
+        "name": "Wilgotność mopa",
+        "state": {"dry": "Sucho", "normal": "Normalnie", "wet": "Mokro"}
+      },
+      "mop_dry_strength": {
+        "name": "Suszenie mopa",
+        "state": {"quiet": "Cicho", "strong": "Mocno", "smart": "Automatycznie"}
+      },
+      "mop_wash_frequency": {
+        "name": "Częstość mycia mopa",
+        "state": {"efficient": "Oszczędnie", "normal": "Normalnie", "deep": "Dokładnie"}
+      },
+      "carpet_strategy": {
+        "name": "Dywany",
+        "state": {
+          "cross": "Przejeżdżaj",
+          "boost": "Zwiększ ssanie",
+          "ignore": "Ignoruj",
+          "avoid": "Omijaj"
+        }
+      }
+    },
+    "switch": {
+      "child_lock": {"name": "Blokada rodzicielska"},
+      "auto_empty": {"name": "Automatyczne opróżnianie"},
+      "quiet_auto_empty": {"name": "Ciche opróżnianie"},
+      "auto_detergent": {"name": "Automatyczny detergent"},
+      "carpet_boost": {"name": "Wzmocnienie na dywanie"},
+      "pet_mode": {"name": "Tryb zwierząt"},
+      "smart_deep_clean": {"name": "Inteligentne dokładne sprzątanie"},
+      "hot_water_wash": {"name": "Mycie mopa gorącą wodą"},
+      "do_not_disturb": {"name": "Nie przeszkadzać"}
+    },
+    "number": {
+      "volume": {"name": "Głośność"},
+      "clean_passes": {
+        "name": "Liczba przejść",
+        "description": "Ile razy każdy pokój jest sprzątany przy następnym uruchomieniu. 1 albo 2."
+      }
+    }
+  },
+  "services": {
+    "set_schedules": {
+      "name": "Ustaw harmonogram Freo S",
+      "description": "Zapisuje całą listę harmonogramu Freo S. Podaj pełny ciąg albo jeden identyfikator i czy jest włączony. Integracja zawsze zapisuje całą listę.",
+      "fields": {
+        "entity_id": {"name": "Odkurzacz", "description": "Encja odkurzacza Freo S."},
+        "timing": {"name": "Lista", "description": "Pełny ciąg harmonogramu, wpisy rozdzielone średnikami."},
+        "schedule_id": {"name": "Identyfikator", "description": "Identyfikator jednego wpisu do włączenia albo wyłączenia."},
+        "enabled": {"name": "Włączony", "description": "Włącz albo wyłącz ten wpis."}
+      }
+    },
+    "schedule_clean_once": {
+      "name": "Zaplanuj jednorazowe sprzątanie Freo S",
+      "description": "Dodaje jeden włączony jednorazowy wpis. Integracja najpierw odczytuje listę i zapisuje ją w całości. Wyłączony jednorazowy wpis jest używany ponownie, jeśli istnieje. Godzina jest zapisywana jako zegar UTC, tak jak pokazuje ją robot.",
+      "fields": {
+        "entity_id": {"name": "Odkurzacz", "description": "Encja odkurzacza Freo S."},
+        "date": {"name": "Data", "description": "Data w formacie RRRR-MM-DD."},
+        "time": {"name": "Godzina", "description": "Godzina w formacie GG:MM."},
+        "rooms": {"name": "Pokoje", "description": "Identyfikatory albo nazwy pokoi z mapy."},
+        "areas": {"name": "Obszary", "description": "Identyfikatory obszarów Home Assistant zmapowanych na pokoje tego odkurzacza."},
+        "mode": {"name": "Tryb", "description": "Vacuum Only albo Vacuum & Mop. Bez wartości używany jest domyślny tryb."},
+        "suction": {"name": "Siła ssania", "description": "Quiet, Normal, Strong albo Max. Bez wartości używana jest wartość domyślna."},
+        "water": {"name": "Poziom wody", "description": "low, medium albo high. Bez wartości używana jest wartość domyślna."},
+        "passes": {"name": "Przejścia", "description": "1 albo 2. Bez wartości używana jest wartość domyślna."}
+      }
+    },
+    "delete_schedule": {
+      "name": "Usuń wpis harmonogramu Freo S",
+      "description": "Usuwa jeden wpis. Integracja najpierw odczytuje listę i zapisuje pozostałe wpisy. Ostatniego wpisu nie usuwa; wyłącz go.",
+      "fields": {
+        "entity_id": {"name": "Odkurzacz", "description": "Encja odkurzacza Freo S."},
+        "schedule_id": {"name": "Identyfikator", "description": "Identyfikator wpisu do usunięcia."}
+      }
     }
   }
 }

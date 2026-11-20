@@ -34,13 +34,42 @@
     },
     "abort": {
       "already_configured": "This robot is already set up.",
-      "no_devices": "No robots are linked to this Narwal account. Add your robot in the Narwal app first."
+      "no_devices": "No robots are linked to this Narwal account. Add your robot in the Narwal app first.",
+      "options_freo_s_only": "These defaults are available for the Narwal Freo S only."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Freo S clean defaults",
+        "description": "Used when a clean starts without its own mode, suction, water level, or passes, including Clean area from a voice assistant. Suction and water apply to the next clean. A change during a clean that is already running is not sent to the robot.",
+        "data": {
+          "clean_mode": "Default clean mode",
+          "passes": "Default passes",
+          "suction": "Default suction",
+          "water": "Default water level"
+        }
+      }
     }
   },
   "entity": {
     "vacuum": {
       "narwal": {
-        "name": "Narwal Vacuum"
+        "name": "Narwal Vacuum",
+        "state_attributes": {
+          "suction_applies_to": {
+            "name": "Suction applies to",
+            "state": {
+              "next_clean": "Next clean"
+            }
+          },
+          "water_applies_to": {
+            "name": "Water applies to",
+            "state": {
+              "next_clean": "Next clean"
+            }
+          }
+        }
       }
     },
     "sensor": {
@@ -51,7 +80,11 @@
         "name": "Status"
       },
       "error": {
-        "name": "Error"
+        "name": "Error",
+        "state": {
+          "no_error": "No error",
+          "unknown_fault": "Unknown fault"
+        }
       },
       "elapsed_time": {
         "name": "Cleaning time"
@@ -152,10 +185,12 @@
     },
     "select": {
       "clean_mode": {
-        "name": "Clean mode"
+        "name": "Clean mode",
+        "description": "Sent with the next clean. The default is Vacuum only."
       },
       "water_level": {
         "name": "Water level",
+        "description": "Sent with the next clean. Changing it while the robot is already cleaning does not affect the current task.",
         "state": {
           "low": "Low",
           "medium": "Medium",
@@ -230,7 +265,8 @@
         "name": "Volume"
       },
       "clean_passes": {
-        "name": "Clean passes"
+        "name": "Clean passes",
+        "description": "How many times each room is cleaned on the next clean. 1 or 2."
       }
     }
   },
@@ -254,6 +290,62 @@
         "enabled": {
           "name": "Enabled",
           "description": "Turn that schedule on or off."
+        }
+      }
+    },
+    "schedule_clean_once": {
+      "name": "Schedule a one-time Freo S clean",
+      "description": "Add one enabled one-time clean to the Freo S schedule. The integration reads the current list first and writes the whole list back. A disabled one-time entry is reused when one exists. The time is stored as a UTC wall clock, which is how the robot displays it.",
+      "fields": {
+        "entity_id": {
+          "name": "Vacuum",
+          "description": "The Freo S vacuum entity."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Date as YYYY-MM-DD."
+        },
+        "time": {
+          "name": "Time",
+          "description": "Time as HH:MM. The robot shows this clock time."
+        },
+        "rooms": {
+          "name": "Rooms",
+          "description": "Room ids or room names from the map."
+        },
+        "areas": {
+          "name": "Areas",
+          "description": "Home Assistant area ids already mapped to this vacuum's rooms."
+        },
+        "mode": {
+          "name": "Clean mode",
+          "description": "Vacuum Only or Vacuum & Mop. Uses the integration default when omitted."
+        },
+        "suction": {
+          "name": "Suction",
+          "description": "Quiet, Normal, Strong, or Max. Uses the integration default when omitted."
+        },
+        "water": {
+          "name": "Water level",
+          "description": "low, medium, or high. Uses the integration default when omitted."
+        },
+        "passes": {
+          "name": "Passes",
+          "description": "1 or 2. Uses the integration default when omitted."
+        }
+      }
+    },
+    "delete_schedule": {
+      "name": "Delete a Freo S schedule",
+      "description": "Remove one schedule entry. The integration reads the current list first and writes the remaining entries. The last entry is not deleted; disable it instead.",
+      "fields": {
+        "entity_id": {
+          "name": "Vacuum",
+          "description": "The Freo S vacuum entity."
+        },
+        "schedule_id": {
+          "name": "Schedule id",
+          "description": "Id of the entry to remove."
         }
       }
     }

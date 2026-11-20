@@ -57,15 +57,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: NarwalConfigEntry) -> bo
 
 async def _register_schedule_service(hass: HomeAssistant) -> None:
     """Whole-list schedule writes for Freo S. Other models get a clear error."""
-    from .thing_coordinator import SERVICE_SET_SCHEDULES, SET_SCHEDULES_SCHEMA, async_handle_set_schedules
+    from .thing_coordinator import (
+        DELETE_SCHEDULE_SCHEMA,
+        SCHEDULE_ONCE_SCHEMA,
+        SERVICE_DELETE_SCHEDULE,
+        SERVICE_SCHEDULE_ONCE,
+        SERVICE_SET_SCHEDULES,
+        SET_SCHEDULES_SCHEMA,
+        async_handle_delete_schedule,
+        async_handle_schedule_once,
+        async_handle_set_schedules,
+    )
 
     if hass.services.has_service(DOMAIN, SERVICE_SET_SCHEDULES):
         return
     hass.services.async_register(
-        DOMAIN,
-        SERVICE_SET_SCHEDULES,
-        async_handle_set_schedules,
-        schema=SET_SCHEDULES_SCHEMA,
+        DOMAIN, SERVICE_SET_SCHEDULES, async_handle_set_schedules, schema=SET_SCHEDULES_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_SCHEDULE_ONCE, async_handle_schedule_once, schema=SCHEDULE_ONCE_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_DELETE_SCHEDULE, async_handle_delete_schedule, schema=DELETE_SCHEDULE_SCHEMA,
     )
 
 

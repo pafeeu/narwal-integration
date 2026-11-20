@@ -20,7 +20,6 @@ from . import NarwalConfigEntry
 from .const import PROTOCOL_THING
 from .coordinator import NarwalCoordinator
 from .entity import Bx3Entity, NarwalEntity
-from .narwal_client.thing_faults import fault_text
 from .narwal_client import NarwalState
 from .narwal_client.error_codes import error_message
 from .narwal_client.proto import enum_labels
@@ -269,26 +268,25 @@ class Bx3StatusSensor(Bx3Sensor):
 
 
 class Bx3ErrorSensor(Bx3Sensor):
-    def __init__(self, coordinator: ThingCoordinator) -> None:
-        super().__init__(coordinator, "error", icon="mdi:alert-circle-outline")
+    """Fault text comes from translations of ``no_error`` and ``unknown_fault``."""
 
-    def _language(self) -> str:
-        if self.hass is None:
-            return "en"
-        return getattr(self.hass.config, "language", None) or "en"
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(
+            coordinator, "error",
+            device_class=SensorDeviceClass.ENUM,
+            icon="mdi:alert-circle-outline",
+        )
+        self._attr_options = ["no_error", "unknown_fault"]
 
     @property
     def native_value(self) -> str:
-        return fault_text(self.state_data.fault, self._language())
+        if not self.state_data.fault:
+            return "no_error"
+        return "unknown_fault"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        code = self.state_data.fault or 0
-        return {
-            "code": code,
-            "message_en": fault_text(code, "en"),
-            "message_pl": fault_text(code, "pl"),
-        }
+        return {"code": self.state_data.fault or 0}
 
 
 class Bx3DurationSensor(Bx3Sensor):
@@ -354,9 +352,20 @@ class Bx3SchedulesSensor(Bx3Sensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {
-            "schedules": [entry.as_dict() for entry in self.state_data.schedules],
-            "timing": self.state_data.raw_timing,
-        }
+        rows = []
+        lines = []
+        for entry in self.state_data.schedules:
+            row = entry.as_dict()
+            names = []
+            for room_id in entry.rooms:
+                name = self.state_data.room_name(room_id)
+                names.append(name if name else f"#{room_id}")
+            row["room_names"] = names
+            rows.append(row)
+            status = "enabled" if entry.enabled else "disabled"
+            lines.append(
+                f"{entry.id} {status} {entry.time_label} {entry.days_label}: {', '.join(names)}"
+            )
+        return {"schedules": rows, "lines": lines, "timing": self.state_data.raw_timing}
 
 

@@ -357,6 +357,81 @@ def set_schedule_enabled(entries: list[ThingSchedule], schedule_id: int, enabled
     return encode_schedules(entries)
 
 
+def once_timestamp(date: str, clock: str) -> int:
+    """Epoch for a one-time entry.
+
+    The robot shows the UTC wall clock of this timestamp as the schedule time.
+    ``date`` is ``YYYY-MM-DD`` and ``clock`` is ``HH:MM``.
+    """
+    parsed = datetime.strptime(f"{date.strip()} {clock.strip()}", "%Y-%m-%d %H:%M")
+    return int(parsed.replace(tzinfo=timezone.utc).timestamp())
+
+
+def upsert_one_time(
+    entries: list[ThingSchedule],
+    *,
+    when: int,
+    rooms: list[int],
+    map_id: int,
+    suction: int,
+    water: int,
+    sweep_type: int,
+    passes: int,
+) -> str:
+    """Enable one one-shot entry, reusing a disabled one-shot row when one exists.
+
+    The whole list is returned for a single ``set``. A disabled entry with
+    ``repeat`` 0 and days ``0000000`` (the captured "once" rows) is overwritten.
+    Otherwise a new id, one higher than the current maximum, is appended.
+    """
+    reusable = next(
+        (entry for entry in entries if entry.repeat == 0 and entry.days == "0000000" and entry.state == 0),
+        None,
+    )
+    if reusable is None:
+        new_id = max((entry.id for entry in entries), default=0) + 1
+        entries.append(ThingSchedule(
+            id=new_id,
+            state=1,
+            time=str(when),
+            days="0000000",
+            repeat=0,
+            map_id=map_id,
+            suction=suction,
+            water=water,
+            sweep_type=sweep_type,
+            sweep_times=passes,
+            mop_times=passes,
+            rooms=list(rooms),
+        ))
+    else:
+        reusable.state = 1
+        reusable.time = str(when)
+        reusable.map_id = map_id
+        reusable.suction = suction
+        reusable.water = water
+        reusable.sweep_type = sweep_type
+        reusable.sweep_times = passes
+        reusable.mop_times = passes
+        reusable.rooms = list(rooms)
+    return encode_schedules(entries)
+
+
+def delete_schedule_id(entries: list[ThingSchedule], schedule_id: int) -> str:
+    """Drop one entry and return the remaining list.
+
+    The last remaining entry is not deleted here: an empty write would clear
+    every schedule, so the caller should disable that entry instead.
+    """
+    kept = [entry for entry in entries if entry.id != schedule_id]
+    if len(kept) == len(entries):
+        known = sorted(entry.id for entry in entries)
+        raise ValueError(f"No schedule with id {schedule_id}; known ids: {known}")
+    if not kept:
+        raise ValueError("Refusing to delete the last schedule; disable it instead")
+    return encode_schedules(kept)
+
+
 @dataclass
 class ThingRoom:
     room_id: int

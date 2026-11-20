@@ -35,6 +35,16 @@ CONF_PRODUCT_GROUP = "product_group"
 CONF_MODEL = "model"
 CONF_FIRMWARE = "firmware"
 
+# Freo S options. Used when a clean starts without its own parameters.
+OPT_CLEAN_MODE = "clean_mode"
+OPT_PASSES = "passes"
+OPT_SUCTION = "suction"
+OPT_WATER = "water"
+DEFAULT_CLEAN_MODE = "Vacuum Only"
+DEFAULT_PASSES = 1
+DEFAULT_SUCTION = "Normal"
+DEFAULT_WATER = "medium"
+
 # Legacy keys (kept for migration from manual config)
 CONF_MQTT_USERNAME = "mqtt_username"
 CONF_MQTT_PASSWORD = "mqtt_password"

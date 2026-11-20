@@ -155,8 +155,8 @@ class NarwalConfigSelect(NarwalEntity, SelectEntity):
         await self._run(self.coordinator.client.set_config(**{d.config_key: d.values[option]}))
         self.async_write_ha_state()
 
-class Bx3WaterSelect(Bx3Entity, SelectEntity, RestoreEntity):
-    """Water level sent with the next clean. The robot has no captured live write."""
+class Bx3WaterSelect(Bx3Entity, SelectEntity):
+    """Water level sent with the next clean. No mid-clean write was captured."""
 
     _attr_translation_key = "water_level"
     _attr_icon = "mdi:water"
@@ -165,26 +165,19 @@ class Bx3WaterSelect(Bx3Entity, SelectEntity, RestoreEntity):
     def __init__(self, coordinator: ThingCoordinator) -> None:
         super().__init__(coordinator, "water_level")
 
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        last = await self.async_get_last_state()
-        if last and last.state in WATER_LEVELS and self.coordinator.water_level is None:
-            self.coordinator.water_level = WATER_LEVELS[last.state]
-
     @property
     def current_option(self) -> str | None:
         return WATER_BY_LEVEL.get(self.coordinator.effective_water())
 
     async def async_select_option(self, option: str) -> None:
-        level = WATER_LEVELS.get(option)
-        if level is None:
+        if option not in WATER_LEVELS:
             raise ServiceValidationError(f"Unknown water level {option!r}")
-        self.coordinator.water_level = level
+        self.coordinator.set_pref(water=option)
         self.async_write_ha_state()
 
 
-class Bx3CleanModeSelect(Bx3Entity, SelectEntity, RestoreEntity):
-    """Clean mode sent with the next ``start_sweep``. Kept in Home Assistant."""
+class Bx3CleanModeSelect(Bx3Entity, SelectEntity):
+    """Clean mode sent with the next ``start_sweep``."""
 
     _attr_translation_key = "clean_mode"
     _attr_icon = "mdi:vacuum"
@@ -192,12 +185,6 @@ class Bx3CleanModeSelect(Bx3Entity, SelectEntity, RestoreEntity):
 
     def __init__(self, coordinator: ThingCoordinator) -> None:
         super().__init__(coordinator, "clean_mode")
-
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        last = await self.async_get_last_state()
-        if last and last.state in SWEEP_TYPES:
-            self.coordinator.sweep_type = SWEEP_TYPES[last.state]
 
     @property
     def current_option(self) -> str | None:
@@ -208,7 +195,7 @@ class Bx3CleanModeSelect(Bx3Entity, SelectEntity, RestoreEntity):
             raise ServiceValidationError(
                 f"Unknown mode {option!r}; use one of {list(SWEEP_TYPES)}"
             )
-        self.coordinator.sweep_type = SWEEP_TYPES[option]
+        self.coordinator.set_pref(clean_mode=option)
         self.async_write_ha_state()
 
 

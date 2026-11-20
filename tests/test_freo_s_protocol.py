@@ -178,6 +178,35 @@ def test_command_payloads_match_fixtures() -> None:
     assert build_get_reported("mid", {"clean": ["timing"]})["properties"] == timing_read["properties"]
 
 
+def test_one_time_schedule_overwrites_the_first_disabled_once_row() -> None:
+    from custom_components.narwal.narwal_client.thing_protocol import (
+        delete_schedule_id,
+        once_timestamp,
+        upsert_one_time,
+    )
+
+    original = timing_inner(
+        _load("get_reported_clean_all.json")["responses"][0]["payload"]["payload"]["clean"]["timing"]["value"]
+    )
+    updated = upsert_one_time(
+        parse_timing_value(original),
+        when=once_timestamp("2026-10-03", "10:30"),
+        rooms=[6],
+        map_id=1779376970,
+        suction=2,
+        water=2,
+        sweep_type=0,
+        passes=1,
+    )
+    reused = next(entry for entry in parse_timing_value(updated) if entry.id == 8)
+    assert reused.state == 1
+    assert reused.time_label == "10:30 10/3"
+    assert reused.rooms == [6]
+    kept = delete_schedule_id(parse_timing_value(updated), 11)
+    assert all(entry.id != 11 for entry in parse_timing_value(kept))
+    assert encode_schedules(parse_timing_value(kept)) == kept
+
+
 def test_schedule_rewrite_matches_the_captured_set() -> None:
     original = timing_inner(
         _load("get_reported_clean_all.json")["responses"][0]["payload"]["payload"]["clean"]["timing"]["value"]

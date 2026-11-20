@@ -13,7 +13,6 @@ from homeassistant.components.vacuum import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import NarwalConfigEntry
 from .const import (
@@ -267,7 +266,7 @@ class NarwalVacuum(NarwalEntity, StateVacuumEntity):
             raise ServiceValidationError(
                 f"Unknown command {command!r}; supported: clean_rooms, {', '.join(_SIMPLE_COMMANDS)}"
             )
-class Bx3Vacuum(Bx3Entity, StateVacuumEntity, RestoreEntity):
+class Bx3Vacuum(Bx3Entity, StateVacuumEntity):
     """Freo S vacuum: start, pause, stop, dock, suction, and room cleaning."""
 
     _attr_translation_key = "narwal"
@@ -287,15 +286,6 @@ class Bx3Vacuum(Bx3Entity, StateVacuumEntity, RestoreEntity):
         super().__init__(coordinator, "vacuum")
         self._segments_issue_raised = False
 
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        last = await self.async_get_last_state()
-        if last is None:
-            return
-        speed = last.attributes.get("fan_speed")
-        if speed in SUCTION_LEVELS and self.coordinator.suction_level is None:
-            self.coordinator.suction_level = SUCTION_LEVELS[speed]
-
     @property
     def activity(self) -> VacuumActivity:
         return _ACTIVITY.get(self.state_data.activity, VacuumActivity.IDLE)
@@ -313,6 +303,9 @@ class Bx3Vacuum(Bx3Entity, StateVacuumEntity, RestoreEntity):
             "no_go_rooms": [],
             "suction_level": self.coordinator.effective_suction(),
             "water_level": self.coordinator.effective_water(),
+            # No mid-clean suction or water write was captured. These apply next time.
+            "suction_applies_to": "next_clean",
+            "water_applies_to": "next_clean",
             "clean_rooms": state.clean_room_ids,
             "map_id": state.map_id,
         }
@@ -349,9 +342,9 @@ class Bx3Vacuum(Bx3Entity, StateVacuumEntity, RestoreEntity):
             raise ServiceValidationError(
                 f"Unknown fan speed {fan_speed!r}; use one of {list(SUCTION_LEVELS)}"
             )
-        # The robot takes suction inside start_sweep. While docked there is no
-        # captured property write, so the choice is kept for the next clean.
-        self.coordinator.suction_level = level
+        # No mid-clean property set or action for suction was captured.
+        # The value is stored and sent on the next start_sweep.
+        self.coordinator.set_pref(suction=fan_speed)
         self.async_write_ha_state()
 
     async def async_get_segments(self) -> list[Any]:
