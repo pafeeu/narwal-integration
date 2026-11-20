@@ -65,7 +65,7 @@
     "step": {
       "init": {
         "title": "Freo S clean defaults",
-        "description": "Used when a clean starts without its own mode, suction, water level, or passes, including Clean area from a voice assistant. Suction and water apply to the next clean. A change during a clean that is already running is not sent to the robot.",
+        "description": "Used when a clean starts without its own mode, suction, water level, or passes, including Clean area from a voice assistant. While cleaning or paused, changing suction (or water) also writes to the robot; that value becomes the next-clean default too.",
         "data": {
           "clean_mode": "Default clean mode",
           "passes": "Default passes",
@@ -106,18 +106,6 @@
           },
           "water_next_clean": {
             "name": "Next-clean water"
-          },
-          "suction_applies_to": {
-            "name": "Suction applies to",
-            "state": {
-              "next_clean": "Next clean"
-            }
-          },
-          "water_applies_to": {
-            "name": "Water applies to",
-            "state": {
-              "next_clean": "Next clean"
-            }
           }
         }
       }
@@ -240,7 +228,7 @@
       },
       "water_level": {
         "name": "Water level",
-        "description": "Sent with the next clean. Changing it while the robot is already cleaning does not affect the current task.",
+        "description": "While cleaning or paused, written live to the robot (same path as suction; water write not captured live). Also stored for the next start when idle.",
         "state": {
           "low": "Low",
           "medium": "Medium",

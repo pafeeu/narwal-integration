@@ -15,6 +15,7 @@ from . import NarwalConfigEntry
 from .const import CLEAN_MODE_LIST, CLEAN_MODE_MAP, CLEAN_MODE_REVERSE, MOP_HUMIDITY_MAP, PROTOCOL_THING
 from .coordinator import NarwalCoordinator
 from .entity import Bx3Entity, NarwalEntity
+from .narwal_client.models import ACTIVITY_CLEANING, ACTIVITY_PAUSED
 from .narwal_client.thing_protocol import SWEEP_BY_TYPE, SWEEP_TYPES, WATER_BY_LEVEL, WATER_LEVELS
 from .thing_coordinator import ThingCoordinator
 
@@ -159,8 +160,8 @@ class NarwalConfigSelect(NarwalEntity, SelectEntity):
 class Bx3WaterSelect(Bx3Entity, SelectEntity):
     """Water level: device value during a task, next-clean preference when idle.
 
-    No mid-clean property write was captured. Selecting an option always
-    stores the preference for the next ``start_sweep``.
+    Mid-clean writes use the same ``clean.water_level`` property ``set`` as
+    suction. That path was not captured live — unverified.
     """
 
     _attr_translation_key = "water_level"
@@ -180,7 +181,11 @@ class Bx3WaterSelect(Bx3Entity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         if option not in WATER_LEVELS:
             raise ServiceValidationError(f"Unknown water level {option!r}")
+        # A live change also becomes the next-clean preference.
         self.coordinator.set_pref(water=option)
+        if self.state_data.activity in (ACTIVITY_CLEANING, ACTIVITY_PAUSED):
+            # Same shape as captured suction; water itself is unverified live.
+            await self._run(self.coordinator.client.set_water(WATER_LEVELS[option]))
         self.async_write_ha_state()
 
 

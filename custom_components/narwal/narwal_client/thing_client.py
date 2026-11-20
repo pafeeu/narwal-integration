@@ -240,6 +240,39 @@ class ThingClient:
         body = build_set_property(message_id, properties)
         return await self._request("property/up", body, kind="property", timeout=timeout)
 
+    async def set_property(
+        self,
+        module: str,
+        key: str,
+        value: Any,
+        *,
+        timeout: float = ACTION_TIMEOUT,
+    ) -> dict[str, Any]:
+        """Write one property via ``method`` ``set`` on ``thing/property/up``.
+
+        Live capture (mid-clean suction, 2026-11-20): publishes
+        ``{"method":"set","property":{"clean":{"suction_level":{"value":N}}}}``,
+        then ``property/down`` (set echo), ``property/up/reply`` with
+        ``payload.code`` 0, then a ``reported`` push. This method awaits the
+        up/reply and merges the new value into local state so the UI updates
+        before the reported push arrives.
+        """
+        reply = await self.set_properties({module: {key: {"value": value}}}, timeout=timeout)
+        self.state.merge_modules({module: {key: {"value": value}}})
+        self._notify()
+        return reply
+
+    async def set_suction(self, level: int, *, timeout: float = ACTION_TIMEOUT) -> dict[str, Any]:
+        """``clean.suction_level``: 1 Quiet … 4 Max. Captured mid-clean."""
+        return await self.set_property("clean", "suction_level", level, timeout=timeout)
+
+    async def set_water(self, level: int, *, timeout: float = ACTION_TIMEOUT) -> dict[str, Any]:
+        """``clean.water_level``: 1 low … 3 high.
+
+        Same ``set`` shape as suction. Not captured live; treat as unverified.
+        """
+        return await self.set_property("clean", "water_level", level, timeout=timeout)
+
     async def _request(self, suffix: str, body: dict[str, Any], *, kind: str, timeout: float) -> dict[str, Any]:
         if not self._client or not self.connected:
             raise NarwalConnectionError("Not connected")

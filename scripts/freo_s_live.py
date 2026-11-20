@@ -38,6 +38,8 @@ and refuses to run without --yes:
   python scripts/freo_s_live.py start --rooms 5 --yes
   python scripts/freo_s_live.py set-schedule --id 10 --enabled false --yes
   python scripts/freo_s_live.py set-schedule --timing '<full list>' --yes
+  python scripts/freo_s_live.py set-suction 1 --yes
+  python scripts/freo_s_live.py set-water 2 --yes
 """
 
 from __future__ import annotations
@@ -121,6 +123,10 @@ def _parser() -> argparse.ArgumentParser:
     sched.add_argument("--id", type=int, dest="schedule_id")
     sched.add_argument("--enabled", choices=("true", "false"))
     sched.add_argument("--timing", help="Full ;-separated timing list")
+    suction = mutating("set-suction", help="Write clean.suction_level (1 Quiet … 4 Max)")
+    suction.add_argument("level", type=int, choices=(1, 2, 3, 4))
+    water = mutating("set-water", help="Write clean.water_level (1–3). Unverified live.")
+    water.add_argument("level", type=int, choices=(1, 2, 3))
     return parser
 
 
@@ -215,6 +221,12 @@ async def _mutate(client: ThingClient, args: argparse.Namespace) -> None:
             print(f"schedule {args.schedule_id} enabled={args.enabled}: ok")
         else:
             raise SystemExit("set-schedule needs --timing, or --id and --enabled.")
+    elif command == "set-suction":
+        await client.set_suction(args.level)
+        print(f"set suction_level={args.level}: ok")
+    elif command == "set-water":
+        await client.set_water(args.level)
+        print(f"set water_level={args.level}: ok (unverified live path)")
     await client.get_reported({"robot_status": []})
     await client.get_reported({"clean": []})
     _print_state(client)
@@ -222,7 +234,9 @@ async def _mutate(client: ThingClient, args: argparse.Namespace) -> None:
 
 async def _main(args: argparse.Namespace) -> None:
     command = args.command or "reads"
-    mutating = command in {"recall", "pause", "resume", "stop", "start", "set-schedule"}
+    mutating = command in {
+        "recall", "pause", "resume", "stop", "start", "set-schedule", "set-suction", "set-water",
+    }
     if mutating and not args.yes:
         print(f"ERROR: {command} changes the robot. Re-run with --yes if you mean it.", file=sys.stderr)
         raise SystemExit(2)

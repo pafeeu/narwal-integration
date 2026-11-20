@@ -298,8 +298,8 @@ class Bx3Vacuum(Bx3Entity, StateVacuumEntity):
     def fan_speed(self) -> str | None:
         """Device suction while a task runs; otherwise the next-clean preference.
 
-        A mid-task ``set_fan_speed`` only updates the preference. The displayed
-        value stays on ``clean.suction_level`` until the robot is idle again.
+        While cleaning or paused, ``set_fan_speed`` writes ``clean.suction_level``
+        live and also stores the preference for the next start.
         """
         return SUCTION_BY_LEVEL.get(self._display_suction())
 
@@ -334,9 +334,6 @@ class Bx3Vacuum(Bx3Entity, StateVacuumEntity):
             "suction_next_clean": next_suction,
             "water_level_current": current_water,
             "water_next_clean": next_water,
-            # No mid-clean write was captured; set_fan_speed / water select store prefs.
-            "suction_applies_to": "next_clean",
-            "water_applies_to": "next_clean",
             "clean_rooms": state.clean_room_ids,
             "map_id": state.map_id,
         }
@@ -373,9 +370,11 @@ class Bx3Vacuum(Bx3Entity, StateVacuumEntity):
             raise ServiceValidationError(
                 f"Unknown fan speed {fan_speed!r}; use one of {list(SUCTION_LEVELS)}"
             )
-        # No mid-clean property set or action for suction was captured.
-        # The value is stored and sent on the next start_sweep.
+        # A live change also becomes the next-clean preference.
         self.coordinator.set_pref(suction=fan_speed)
+        if self.state_data.activity in (ACTIVITY_CLEANING, ACTIVITY_PAUSED):
+            # Captured mid-clean: property/up set clean.suction_level.
+            await self._run(self.coordinator.client.set_suction(level))
         self.async_write_ha_state()
 
     async def async_get_segments(self) -> list[Any]:

@@ -165,6 +165,31 @@ def test_status_push_sequence_matches_the_capture() -> None:
     assert localized_status(cleaning, "de") == "Returning to dock"  # unknown -> English
 
 
+def test_mid_clean_suction_set_matches_capture() -> None:
+    """Live capture: property/up set clean.suction_level while cleaning."""
+    quiet = _load("set_suction_level_1.json")
+    strong = _load("set_suction_level_3.json")
+    assert quiet["request"]["payload"]["property"] == {"clean": {"suction_level": {"value": 1}}}
+    assert strong["request"]["payload"]["property"] == {"clean": {"suction_level": {"value": 3}}}
+    assert build_set_property("mid", {"clean": {"suction_level": {"value": 1}}})["property"] == (
+        quiet["request"]["payload"]["property"]
+    )
+    assert build_set_property("mid", {"clean": {"suction_level": {"value": 3}}})["property"] == (
+        strong["request"]["payload"]["property"]
+    )
+    # Same shape for water (unverified live).
+    assert build_set_property("mid", {"clean": {"water_level": {"value": 2}}})["property"] == {
+        "clean": {"water_level": {"value": 2}}
+    }
+    state = ThingState()
+    for item in quiet["responses"]:
+        apply_thing_message(state, item["topic"], item["payload"])
+    assert state.suction == 1
+    for item in strong["responses"]:
+        apply_thing_message(state, item["topic"], item["payload"])
+    assert state.suction == 3
+
+
 def test_command_payloads_match_fixtures() -> None:
     start = _load("start_sweep_room5.json")["request"]["payload"]
     built = build_invoke("mid", "clean", "start_sweep", build_start_input(room_ids=[5], map_id=1779376970))

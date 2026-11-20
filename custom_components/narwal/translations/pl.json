@@ -26,7 +26,7 @@
     "step": {
       "init": {
         "title": "Domyślne sprzątanie Freo S",
-        "description": "Używane, gdy sprzątanie startuje bez własnego trybu, siły ssania, poziomu wody albo liczby przejść, także przy akcji Clean area z asystenta głosowego. Siła ssania i woda dotyczą następnego sprzątania. Zmiana w trakcie trwającego sprzątania nie jest wysyłana do robota.",
+        "description": "Używane, gdy sprzątanie startuje bez własnego trybu, siły ssania, poziomu wody albo liczby przejść, także przy akcji Clean area z asystenta głosowego. W trakcie sprzątania lub pauzy zmiana siły ssania (albo wody) jest też wysyłana do robota i staje się domyślną wartością następnego startu.",
         "data": {
           "clean_mode": "Domyślny tryb",
           "passes": "Domyślna liczba przejść",
@@ -67,14 +67,6 @@
           },
           "water_next_clean": {
             "name": "Poziom wody następnego sprzątania"
-          },
-          "suction_applies_to": {
-            "name": "Siła ssania dotyczy",
-            "state": {"next_clean": "Następnego sprzątania"}
-          },
-          "water_applies_to": {
-            "name": "Woda dotyczy",
-            "state": {"next_clean": "Następnego sprzątania"}
           }
         }
       }
@@ -157,7 +149,7 @@
       },
       "water_level": {
         "name": "Poziom wody",
-        "description": "Wysyłany przy następnym sprzątaniu. Zmiana w trakcie trwającego sprzątania nie wpływa na bieżące zadanie.",
+        "description": "W trakcie sprzątania lub pauzy zapisywany na żywo do robota (ta sama ścieżka co ssanie; zapis wody nie był przechwycony na żywo). Przy bezczynności zapamiętywany na następny start.",
         "state": {"low": "Niski", "medium": "Średni", "high": "Wysoki"}
       },
       "mop_humidity": {

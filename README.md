@@ -46,7 +46,7 @@ What you get:
 - Water level and clean mode (Vacuum & Mop, or Vacuum Only). Both are sent with the next clean
 - Schedules: read on the Schedules sensor; write with `narwal.set_schedules` (always the whole list)
 
-Suction and water are included in `start_sweep`. A separate property write for them was not captured, so changing them while the robot is docked is stored until the next clean. Resume (`continue_sweep`) and stop (`stop_sweeping`) use the same empty invoke envelope as pause; those two action names come from the app and were not in the capture. Whole-home start sends every room id with the same payload as a room clean.
+Suction and water are included in `start_sweep`. While cleaning or paused, suction is also written live with `method` `set` on `clean.suction_level` (captured 2026-11-20). Water uses the same shape on `clean.water_level` (not captured live — unverified). While docked, changes are stored for the next clean. A live change also updates that next-clean preference. Resume (`continue_sweep`) and stop (`stop_sweeping`) use the same empty invoke envelope as pause; stop was not in the capture. Whole-home start sends every room id with the same payload as a room clean.
 
 `narwal.set_schedules` either replaces the list or flips one entry after reading the current list:
 
@@ -99,7 +99,9 @@ python scripts/freo_s_live.py set-schedule --id 10 --enabled false --yes
 
 `start` and `set-schedule` change what the robot does. `recall` drives it home. Run them yourself, one at a time.
 
-Suction and water **writes** are stored for the **next** clean. The capture has no property `set` and no action that changes them while a clean is already running. While cleaning, paused, or returning, `fan_speed` and the water select show the device's `clean.suction_level` / `clean.water_level`. When idle or docked they show the next-clean preference (what the next `start_sweep` will send). Attributes `suction_level_current` / `suction_next_clean` and `water_level_current` / `water_next_clean` expose both. Passes stay next-clean only: the capture does not report `sweep_times` as a live property. `suction_applies_to` and `water_applies_to` remain `next_clean` for the write path.
+While cleaning or paused, `set_fan_speed` publishes `clean.suction_level` live and updates the displayed current value; it also stores the next-clean preference. Water does the same with `clean.water_level` (unverified live). When idle or docked, only the preference is stored. Attributes `suction_level_current` / `suction_next_clean` and `water_level_current` / `water_next_clean` expose both. Passes stay next-clean only: the capture does not report `sweep_times` as a live property.
+
+Live script: `set-suction N --yes` and `set-water N --yes` (N = 1–4 suction, 1–3 water).
 
 ### Defaults
 
