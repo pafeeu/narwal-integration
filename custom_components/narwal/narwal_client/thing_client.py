@@ -39,12 +39,13 @@ PUBLISH_QOS = 0
 READ_TIMEOUT = 10.0
 ACTION_TIMEOUT = 15.0
 
+# Paths under the single ``thing/`` segment. ``ThingClient.topic`` adds that segment.
 _SUBSCRIBE = (
-    "thing/property/up/reply",
-    "thing/property/down",
-    "thing/action/request/reply",
-    "thing/action/invoke/reply",
-    "thing/event/down",
+    "property/up/reply",
+    "property/down",
+    "action/request/reply",
+    "action/invoke/reply",
+    "event/down",
 )
 
 
@@ -78,7 +79,22 @@ class ThingClient:
 
     @property
     def base(self) -> str:
-        return f"/{self.product_key}/{self.device_name}/thing"
+        """Device root, ``/<productKey>/<deviceId>``. Does not include ``thing/``."""
+        return f"/{self.product_key}/{self.device_name}"
+
+    def topic(self, suffix: str) -> str:
+        """Full MQTT topic. ``suffix`` is relative to the one ``thing/`` segment.
+
+        ``property/up`` and ``thing/property/up`` both become
+        ``/<productKey>/<deviceId>/thing/property/up``. A suffix that still
+        contains ``thing/`` after that is rejected, so the segment cannot be doubled.
+        """
+        relative = suffix.strip("/")
+        if relative == "thing" or relative.startswith("thing/"):
+            relative = relative[len("thing"):].lstrip("/")
+        if not relative or relative.startswith("thing/") or "/thing/" in f"/{relative}/":
+            raise ValueError(f"ThingModel path {suffix!r} must sit under a single thing/ segment")
+        return f"{self.base}/thing/{relative}"
 
     @property
     def connected(self) -> bool:
@@ -119,7 +135,7 @@ class ThingClient:
             _LOGGER.error("ThingModel MQTT rejected: %s", reason_code)
             return
         for suffix in _SUBSCRIBE:
-            client.subscribe(f"{self.base}/{suffix}", qos=PUBLISH_QOS)
+            client.subscribe(self.topic(suffix), qos=PUBLISH_QOS)
 
     def _on_subscribe(self, client, userdata, mid, reason_codes, properties=None):
         codes = reason_codes if isinstance(reason_codes, list) else [reason_codes]
@@ -205,7 +221,7 @@ class ThingClient:
     async def get_reported(self, properties: dict[str, list[str]], *, timeout: float = READ_TIMEOUT) -> dict[str, Any]:
         message_id = str(uuid.uuid1())
         body = build_get_reported(message_id, properties)
-        return await self._request("thing/property/up", body, kind="property", timeout=timeout)
+        return await self._request("property/up", body, kind="property", timeout=timeout)
 
     async def invoke(
         self,
@@ -217,12 +233,12 @@ class ThingClient:
     ) -> dict[str, Any]:
         message_id = str(uuid.uuid1())
         body = build_invoke(message_id, module, action, data)
-        return await self._request("thing/action/request", body, kind="action", timeout=timeout)
+        return await self._request("action/request", body, kind="action", timeout=timeout)
 
     async def set_properties(self, properties: dict[str, Any], *, timeout: float = ACTION_TIMEOUT) -> dict[str, Any]:
         message_id = str(uuid.uuid1())
         body = build_set_property(message_id, properties)
-        return await self._request("thing/property/up", body, kind="property", timeout=timeout)
+        return await self._request("property/up", body, kind="property", timeout=timeout)
 
     async def _request(self, suffix: str, body: dict[str, Any], *, kind: str, timeout: float) -> dict[str, Any]:
         if not self._client or not self.connected:
@@ -243,7 +259,7 @@ class ThingClient:
         try:
             assert self._client is not None
             payload = json.dumps(body, separators=(",", ":")).encode()
-            self._client.publish(f"{self.base}/{suffix}", payload, qos=PUBLISH_QOS)
+            self._client.publish(self.topic(suffix), payload, qos=PUBLISH_QOS)
             if not event.wait(timeout):
                 raise NarwalCommandError(f"{suffix} timed out", timeout=True)
             with self._lock:

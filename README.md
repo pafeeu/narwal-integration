@@ -64,9 +64,15 @@ There is no live map image for the Freo S. Room names come from the map property
 
 ### Live check script
 
-`scripts/freo_s_live.py` talks to a real robot with the same client. Credentials stay in the environment (or `scripts/.env`, which is gitignored). It never prints the password or the token.
+`scripts/freo_s_live.py` talks to a real robot with the same client. It imports `narwal_client` on its own, so Home Assistant does not need to be installed. The only dependency is `paho-mqtt`. Credentials stay in the environment (or `scripts/.env`, which is gitignored). It never prints the password or the token.
 
-Read-only (status, rooms, schedules, one heartbeat):
+The Narwal broker port 8883 is often blocked outside the home server. Run the script inside the Home Assistant container, which already has Python 3 and paho and can reach the broker:
+
+```bash
+docker exec -it <ha-container> python3 /config/scripts/freo_s_live.py
+```
+
+Use the path where this repository is mounted. From a checkout that can reach the broker:
 
 ```bash
 pip install -r requirements.txt

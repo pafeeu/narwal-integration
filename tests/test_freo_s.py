@@ -61,19 +61,21 @@ async def freo(hass: HomeAssistant):
         self._loop = asyncio.get_running_loop()
         self._connected.set()
         self.state.device_reachable = True
-        for name in (
-            "get_reported_robot_status.json",
-            "get_reported_clean_all.json",
-            "get_reported_map.json",
-        ):
-            item = _load(name)["responses"][0]
-            apply_thing_message(self.state, item["topic"], item["payload"])
 
     async def fake_disconnect(self: ThingClient) -> None:
         self._connected.clear()
 
     async def fake_get_reported(self: ThingClient, properties, timeout=10.0):
-        calls.append(("get", properties))
+        calls.append(("get", dict(properties)))
+        modules = {
+            "robot_status": "get_reported_robot_status.json",
+            "clean": "get_reported_clean_all.json",
+            "map": "get_reported_map.json",
+        }
+        for module, name in modules.items():
+            if module in properties and properties[module] == []:
+                item = _load(name)["responses"][0]
+                apply_thing_message(self.state, item["topic"], item["payload"])
         return {"payload": {"code": 0}}
 
     async def fake_invoke(self: ThingClient, module, action, data=None, timeout=15.0):
@@ -130,6 +132,10 @@ async def test_freo_s_states(hass: HomeAssistant, freo) -> None:
     assert er.async_get(hass).async_get_entity_id("camera", DOMAIN, f"{DEVICE}_map") is None
     assert freo.coordinator.protocol == "thing"
     assert freo.coordinator.model == "Narwal Freo S"
+    # Setup reads the map before entities are published, so rooms are not empty.
+    setup_reads = [payload for kind, payload in freo.calls if kind == "get"]
+    assert {"map": []} in setup_reads
+    assert state.attributes["rooms"]
 
 
 async def test_start_pause_stop_and_dock(hass: HomeAssistant, freo) -> None:

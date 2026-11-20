@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 """Live checks for a Narwal Freo S (product group BX3, ThingModel JSON).
 
-Credentials come from the environment, or from scripts/.env if that file
-exists. Values already set in the environment win. Nothing here is printed
-back except robot state.
+Needs paho-mqtt only (``pip install -r requirements.txt``). It does not
+import Home Assistant. Port 8883 to the Narwal broker is often blocked off
+the home server, so run it inside the Home Assistant container, where
+``python3`` and paho are already available:
+
+  docker exec -it <ha-container> python3 /config/scripts/freo_s_live.py
+
+Copy or mount this repo where that path points, and export the variables
+below in that environment (or use scripts/.env next to this file). Values
+already set in the environment win. Nothing here is printed back except
+robot state.
 
   NARWAL_EMAIL       account email
   NARWAL_PASSWORD    account password
@@ -42,11 +50,14 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+# Load narwal_client by itself. Importing custom_components.narwal runs the
+# integration's __init__, which needs Home Assistant. This script only needs
+# paho-mqtt, so it also runs in the HA container or a plain Python checkout.
+sys.path.insert(0, str(ROOT / "custom_components" / "narwal"))
 
-from custom_components.narwal.narwal_client.cloud import NarwalCloud, NarwalCloudError  # noqa: E402
-from custom_components.narwal.narwal_client.thing_client import ThingClient  # noqa: E402
-from custom_components.narwal.narwal_client.thing_protocol import (  # noqa: E402
+from narwal_client.cloud import NarwalCloud, NarwalCloudError  # noqa: E402
+from narwal_client.thing_client import ThingClient  # noqa: E402
+from narwal_client.thing_protocol import (  # noqa: E402
     encode_schedules,
     model_name,
     parse_timing_value,

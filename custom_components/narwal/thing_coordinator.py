@@ -60,6 +60,7 @@ SET_SCHEDULES_SCHEMA = vol.Schema({
     vol.Optional("enabled"): bool,
 })
 
+# Map last, so the state published at the end of setup already has rooms.
 _READS = (
     {"robot_status": []},
     {"clean": []},
@@ -80,6 +81,7 @@ class ThingCoordinator(DataUpdateCoordinator[ThingState]):
         self._consecutive_failures = 0
         self._heartbeat_unsub = None
         self._heartbeat_running = False
+        self._defer_updates = False
         # Preferences applied on the next start_sweep. None follows the robot.
         self.suction_level: int | None = None
         self.water_level: int | None = None
@@ -139,9 +141,15 @@ class ThingCoordinator(DataUpdateCoordinator[ThingState]):
         self._restore_cache()
         if self._cloud:
             await self._reauth()
+        # Hold pushes until the first read, including the map, has landed.
+        # Otherwise a status reply can publish entities with no rooms yet.
+        self._defer_updates = True
         self.client.on_state_update = self._on_state_update
         await self.client.connect()
         await self._refresh(setup=True)
+        self._defer_updates = False
+        if not self.client.state.rooms:
+            _LOGGER.warning("Freo S map did not include rooms; room cleaning waits for the next map read")
         self.async_set_updated_data(self.client.state)
         self._heartbeat_unsub = async_track_time_interval(
             self.hass, self._heartbeat, HEARTBEAT_INTERVAL
@@ -203,6 +211,8 @@ class ThingCoordinator(DataUpdateCoordinator[ThingState]):
             self._heartbeat_running = False
 
     def _on_state_update(self, state: ThingState) -> None:
+        if self._defer_updates:
+            return
         self._consecutive_failures = 0
         self._adjust_poll_interval()
         self.async_set_updated_data(state)

@@ -37,6 +37,43 @@ def _reply(name: str) -> tuple[str, dict]:
     return item["topic"], item["payload"]
 
 
+def test_live_script_does_not_import_homeassistant() -> None:
+    """The CLI loads narwal_client without the integration package."""
+    import os
+    import subprocess
+    import sys
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "freo_s_live.py"
+    env = os.environ.copy()
+    env["PYTHONPATH"] = ""
+    completed = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=script.parents[1],
+        env=env,
+    )
+    assert completed.returncode == 0, completed.stderr
+    probe = (
+        "import runpy, sys\n"
+        "sys.argv = ['freo_s_live.py', '--help']\n"
+        "try:\n"
+        f"    runpy.run_path({str(script)!r}, run_name='__main__')\n"
+        "except SystemExit:\n"
+        "    pass\n"
+        "raise SystemExit(1 if 'homeassistant' in sys.modules else 0)\n"
+    )
+    imported = subprocess.run(
+        [sys.executable, "-c", probe],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert imported.returncode == 0, imported.stderr or imported.stdout
+
+
 def test_product_selection() -> None:
     assert uses_thing_model(product_key="ZTM5lnVgLG", thing_flag=False)
     assert uses_thing_model(product_group="BX3", thing_flag=False)
@@ -166,6 +203,65 @@ def test_map_blob_is_gzip() -> None:
     assert gzip.decompress(base64.b64decode(reply["output"]["current_map"])) == b"freo-s-map"
 
 
+def test_publish_and_subscribe_topics() -> None:
+    """The broker topic is /<product>/<device>/thing/<path>, with thing/ exactly once."""
+    from custom_components.narwal.narwal_client.thing_client import ThingClient
+
+    product = "ZTM5lnVgLG"
+    device = "a" * 32
+    client = ThingClient(
+        product_key=product,
+        device_name=device,
+        user_uuid="b" * 32,
+        mqtt_password="token",
+    )
+    root = f"/{product}/{device}/thing"
+    subscribed: list[str] = []
+    published: list[str] = []
+
+    class Broker:
+        def subscribe(self, topic: str, qos: int = 0) -> tuple[int, int]:
+            subscribed.append(topic)
+            return (0, 1)
+
+        def publish(self, topic: str, payload: bytes, qos: int = 0) -> None:
+            published.append(topic)
+            body = json.loads(payload)
+            slot = client._pending[body["messageId"]]
+            slot["reply"] = {"method": "getReported", "messageId": body["messageId"], "payload": {"code": 0}}
+            slot["event"].set()
+
+    client._on_connect(Broker(), None, None, 0)
+    assert subscribed == [
+        f"{root}/property/up/reply",
+        f"{root}/property/down",
+        f"{root}/action/request/reply",
+        f"{root}/action/invoke/reply",
+        f"{root}/event/down",
+    ]
+    client._client = Broker()
+    client._connected.set()
+    client._request_blocking(
+        "property/up",
+        {"method": "getReported", "messageId": "mid-1", "properties": {"robot_status": []}},
+        "property",
+        1.0,
+    )
+    client._request_blocking(
+        "action/request",
+        {"method": "invoke", "actionIdentifier": "recall_station", "messageId": "mid-2", "module": "clean", "input": {}},
+        "action",
+        1.0,
+    )
+    assert published == [
+        f"{root}/property/up",
+        f"{root}/action/request",
+    ]
+    for topic in subscribed + published:
+        assert topic.count("/thing/") == 1
+        assert "/thing/thing/" not in topic
+
+
 def test_replies_are_matched_by_message_id() -> None:
     from types import SimpleNamespace
 
@@ -186,10 +282,10 @@ def test_replies_are_matched_by_message_id() -> None:
         payload = json.dumps({"code": 0, "method": "invoke", "messageId": message_id}).encode()
         client._on_message(None, None, SimpleNamespace(topic=topic, payload=payload))
 
-    deliver("other", f"{client.base}/action/invoke/reply")
+    deliver("other", client.topic("action/invoke/reply"))
     assert not event.is_set()
-    deliver("wanted", f"{client.base}/action/request/reply")
+    deliver("wanted", client.topic("action/request/reply"))
     assert not event.is_set()  # cloud ack with code 0 is not the robot result
-    deliver("wanted", f"{client.base}/action/invoke/reply")
+    deliver("wanted", client.topic("action/invoke/reply"))
     assert event.is_set()
     assert client._pending["wanted"]["reply"]["messageId"] == "wanted"
