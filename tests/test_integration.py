@@ -33,6 +33,7 @@ async def setup(hass: HomeAssistant, config_entry, mock_robot):
 
 
 async def test_setup_and_states(hass: HomeAssistant, setup, robot) -> None:
+    assert setup.protocol == "protobuf"
     state = hass.states.get(VACUUM)
     assert state.state == VacuumActivity.DOCKED
     assert state.attributes["fan_speed"] == "Normal"

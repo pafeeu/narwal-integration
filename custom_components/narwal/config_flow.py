@@ -14,21 +14,44 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.core import callback
 
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_DEVICE_NAME,
     CONF_EMAIL,
+    CONF_FIRMWARE,
+    CONF_MODEL,
     CONF_PASSWORD,
+    CONF_PRODUCT_GROUP,
     CONF_PRODUCT_KEY,
+    CONF_PROTOCOL,
     CONF_REFRESH_TOKEN,
     CONF_REGION,
     CONF_USER_UUID,
+    DEFAULT_CLEAN_MODE,
+    DEFAULT_PASSES,
+    DEFAULT_SUCTION,
+    DEFAULT_WATER,
     DOMAIN,
+    OPT_CLEAN_MODE,
+    OPT_PASSES,
+    OPT_SUCTION,
+    OPT_WATER,
+    PROTOCOL_PROTOBUF,
+    PROTOCOL_THING,
     REGION_OPTIONS,
+    entry_protocol,
 )
 from .narwal_client import NarwalAuthError, NarwalCloud, NarwalCloudError, NarwalDevice
+from .narwal_client.thing_protocol import (
+    SUCTION_LEVELS,
+    SWEEP_TYPES,
+    WATER_LEVELS,
+    model_name,
+    uses_thing_model,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -140,16 +163,62 @@ class NarwalConfigFlow(ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(_unique_id(device.product_key, device.device_name))
         self._abort_if_unique_id_configured()
         session = self._cloud.session  # type: ignore[union-attr]
-        return self.async_create_entry(
-            title=device.name or device.model or f"Narwal {device.device_name[:8]}",
-            data={
-                CONF_EMAIL: self._email,
-                CONF_PASSWORD: self._password,
-                CONF_REGION: self._region,
-                CONF_PRODUCT_KEY: device.product_key,
-                CONF_DEVICE_NAME: device.device_name,
-                CONF_USER_UUID: session.user_uuid,
-                CONF_ACCESS_TOKEN: session.access_token,
-                CONF_REFRESH_TOKEN: session.refresh_token,
-            },
+        thing = uses_thing_model(
+            product_key=device.product_key,
+            product_group=device.product_group,
+            thing_flag=device.thing_model,
         )
+        reported_model = device.model or model_name(device.product_key, device.product_group)
+        data = {
+            CONF_EMAIL: self._email,
+            CONF_PASSWORD: self._password,
+            CONF_REGION: self._region,
+            CONF_PRODUCT_KEY: device.product_key,
+            CONF_DEVICE_NAME: device.device_name,
+            CONF_USER_UUID: session.user_uuid,
+            CONF_ACCESS_TOKEN: session.access_token,
+            CONF_REFRESH_TOKEN: session.refresh_token,
+            CONF_PROTOCOL: PROTOCOL_THING if thing else PROTOCOL_PROTOBUF,
+        }
+        if device.product_group:
+            data[CONF_PRODUCT_GROUP] = device.product_group
+        if reported_model:
+            data[CONF_MODEL] = reported_model
+        if device.firmware:
+            data[CONF_FIRMWARE] = device.firmware
+        return self.async_create_entry(
+            title=device.name or reported_model or f"Narwal {device.device_name[:8]}",
+            data=data,
+        )
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        return NarwalOptionsFlow()
+
+
+class NarwalOptionsFlow(OptionsFlow):
+    """Defaults for the next Freo S clean."""
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        if entry_protocol(self.config_entry.data) != PROTOCOL_THING:
+            return self.async_abort(reason="options_freo_s_only")
+        if user_input is not None:
+            user_input[OPT_PASSES] = int(user_input[OPT_PASSES])
+            return self.async_create_entry(title="", data=user_input)
+        current = self.config_entry.options
+        schema = vol.Schema({
+            vol.Required(OPT_CLEAN_MODE, default=current.get(OPT_CLEAN_MODE, DEFAULT_CLEAN_MODE)): vol.In(
+                list(SWEEP_TYPES)
+            ),
+            vol.Required(OPT_PASSES, default=int(current.get(OPT_PASSES, DEFAULT_PASSES))): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=2)
+            ),
+            vol.Required(OPT_SUCTION, default=current.get(OPT_SUCTION, DEFAULT_SUCTION)): vol.In(
+                list(SUCTION_LEVELS)
+            ),
+            vol.Required(OPT_WATER, default=current.get(OPT_WATER, DEFAULT_WATER)): vol.In(
+                list(WATER_LEVELS)
+            ),
+        })
+        return self.async_show_form(step_id="init", data_schema=schema)

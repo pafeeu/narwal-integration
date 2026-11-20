@@ -1,0 +1,59 @@
+{
+  "request": {
+    "topic": "thing/property/up",
+    "payload": {
+      "method": "set",
+      "messageId": "00000000-0000-4000-8000-000000000030",
+      "property": {
+        "clean": {
+          "suction_level": {
+            "value": 1
+          }
+        }
+      }
+    }
+  },
+  "responses": [
+    {
+      "topic": "thing/property/down",
+      "payload": {
+        "method": "set",
+        "messageId": "00000000-0000-4000-8000-000000000030",
+        "property": {
+          "clean": {
+            "suction_level": {
+              "time": 1795169000000,
+              "value": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "topic": "thing/property/up/reply",
+      "payload": {
+        "method": "set",
+        "messageId": "00000000-0000-4000-8000-000000000030",
+        "payload": {
+          "code": 0
+        }
+      }
+    },
+    {
+      "topic": "thing/property/down",
+      "payload": {
+        "method": "reported",
+        "messageId": "00000000-0000-4000-8000-000000000031",
+        "nextVersion": 42,
+        "property": {
+          "clean": {
+            "suction_level": {
+              "time": 1795169001000,
+              "value": 1
+            }
+          }
+        }
+      }
+    }
+  ]
+}

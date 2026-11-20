@@ -7,13 +7,17 @@ from dataclasses import dataclass
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import NarwalConfigEntry
-from .const import CLEAN_MODE_LIST, CLEAN_MODE_MAP, CLEAN_MODE_REVERSE, MOP_HUMIDITY_MAP
+from .const import CLEAN_MODE_LIST, CLEAN_MODE_MAP, CLEAN_MODE_REVERSE, MOP_HUMIDITY_MAP, PROTOCOL_THING
 from .coordinator import NarwalCoordinator
-from .entity import NarwalEntity
+from .entity import Bx3Entity, NarwalEntity
+from .narwal_client.models import ACTIVITY_CLEANING, ACTIVITY_PAUSED
+from .narwal_client.thing_protocol import SWEEP_BY_TYPE, SWEEP_TYPES, WATER_BY_LEVEL, WATER_LEVELS
+from .thing_coordinator import ThingCoordinator
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -66,6 +70,10 @@ async def async_setup_entry(
     entry: NarwalConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
+    if entry.runtime_data.protocol == PROTOCOL_THING:
+        coordinator = entry.runtime_data
+        async_add_entities([Bx3CleanModeSelect(coordinator), Bx3WaterSelect(coordinator)])
+        return
     coordinator = entry.runtime_data
     entities: list[SelectEntity] = [
         NarwalCleanModeSelect(coordinator),
@@ -148,3 +156,59 @@ class NarwalConfigSelect(NarwalEntity, SelectEntity):
         d = self.entity_description
         await self._run(self.coordinator.client.set_config(**{d.config_key: d.values[option]}))
         self.async_write_ha_state()
+
+class Bx3WaterSelect(Bx3Entity, SelectEntity):
+    """Water level: device value during a task, next-clean preference when idle.
+
+    Mid-clean writes use the same ``clean.water_level`` property ``set`` as
+    suction. That path was not captured live — unverified.
+    """
+
+    _attr_translation_key = "water_level"
+    _attr_icon = "mdi:water"
+    _attr_options = list(WATER_LEVELS)
+
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(coordinator, "water_level")
+
+    @property
+    def current_option(self) -> str | None:
+        state = self.state_data
+        if state.task_active and state.water is not None:
+            return WATER_BY_LEVEL.get(state.water)
+        return WATER_BY_LEVEL.get(self.coordinator.effective_water())
+
+    async def async_select_option(self, option: str) -> None:
+        if option not in WATER_LEVELS:
+            raise ServiceValidationError(f"Unknown water level {option!r}")
+        # A live change also becomes the next-clean preference.
+        self.coordinator.set_pref(water=option)
+        if self.state_data.activity in (ACTIVITY_CLEANING, ACTIVITY_PAUSED):
+            # Same shape as captured suction; water itself is unverified live.
+            await self._run(self.coordinator.client.set_water(WATER_LEVELS[option]))
+        self.async_write_ha_state()
+
+
+class Bx3CleanModeSelect(Bx3Entity, SelectEntity):
+    """Clean mode sent with the next ``start_sweep``."""
+
+    _attr_translation_key = "clean_mode"
+    _attr_icon = "mdi:vacuum"
+    _attr_options = list(SWEEP_TYPES)
+
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(coordinator, "clean_mode")
+
+    @property
+    def current_option(self) -> str | None:
+        return SWEEP_BY_TYPE.get(self.coordinator.sweep_type)
+
+    async def async_select_option(self, option: str) -> None:
+        if option not in SWEEP_TYPES:
+            raise ServiceValidationError(
+                f"Unknown mode {option!r}; use one of {list(SWEEP_TYPES)}"
+            )
+        self.coordinator.set_pref(clean_mode=option)
+        self.async_write_ha_state()
+
+

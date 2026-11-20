@@ -2,6 +2,10 @@
 
 Standalone scripts for debugging and exploring the Narwal MQTT protocol outside of Home Assistant.
 
+## Freo S live check
+
+`freo_s_live.py` exercises the ThingModel path (Narwal Freo S / BX3) against the cloud. It loads `narwal_client` directly and does not import Home Assistant; `paho-mqtt` is the only dependency. The default run is read-only. Movement and schedule writes need `--yes`. The broker port 8883 is often blocked outside the home server, so run it inside the Home Assistant container (`python3` and paho are already there). Usage is in the repository README under **Freo S (BX3)** and in `python scripts/freo_s_live.py --help`.
+
 ## Prerequisites
 
 ```bash

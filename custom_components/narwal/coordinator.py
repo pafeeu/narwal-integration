@@ -25,6 +25,7 @@ from .const import (
     CONF_ROOMS_CACHE,
     CONF_USER_UUID,
     DOMAIN,
+    PROTOCOL_PROTOBUF,
 )
 from .narwal_client import (
     CleanMode,
@@ -53,6 +54,7 @@ class NarwalCoordinator(DataUpdateCoordinator[NarwalState]):
     """Manages communication with the Narwal vacuum via MQTT."""
 
     config_entry: ConfigEntry
+    protocol = PROTOCOL_PROTOBUF
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=POLL_INTERVAL_ACTIVE)

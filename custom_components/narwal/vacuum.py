@@ -15,10 +15,26 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import NarwalConfigEntry
-from .const import CLEAN_MODE_MAP, FAN_SPEED_LIST, FAN_SPEED_MAP, FAN_SPEED_REVERSE, MOP_HUMIDITY_MAP
+from .const import (
+    CLEAN_MODE_MAP,
+    FAN_SPEED_LIST,
+    FAN_SPEED_MAP,
+    FAN_SPEED_REVERSE,
+    MOP_HUMIDITY_MAP,
+    PROTOCOL_THING,
+)
 from .coordinator import NarwalCoordinator
-from .entity import NarwalEntity
+from .entity import Bx3Entity, NarwalEntity
+from .thing_coordinator import ThingCoordinator
 from .narwal_client import CleanMode, FanLevel, MopHumidity
+from .narwal_client.thing_protocol import (
+    SUCTION_BY_LEVEL,
+    SUCTION_LEVELS,
+    SWEEP_TYPES,
+    WATER_BY_LEVEL,
+    WATER_LEVELS,
+    localized_status,
+)
 from .narwal_client.models import (
     ACTIVITY_CLEANING,
     ACTIVITY_DOCKED,
@@ -33,7 +49,16 @@ try:  # Home Assistant 2026.3+: native "clean area" (rooms mapped to HA areas)
 
     _CLEAN_AREA = VacuumEntityFeature.CLEAN_AREA
 except ImportError:  # pragma: no cover - older Home Assistant
-    Segment = None  # type: ignore[assignment,misc]
+    from dataclasses import dataclass
+
+    @dataclass(slots=True)
+    class Segment:  # type: ignore[no-redef]
+        """Stand-in used when this Home Assistant build has no clean-area API yet."""
+
+        id: str
+        name: str
+        group: str | None = None
+
     _CLEAN_AREA = VacuumEntityFeature(0)
 
 _LOGGER = logging.getLogger(__name__)
@@ -61,6 +86,9 @@ async def async_setup_entry(
     entry: NarwalConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
+    if entry.runtime_data.protocol == PROTOCOL_THING:
+        async_add_entities([Bx3Vacuum(entry.runtime_data)])
+        return
     async_add_entities([NarwalVacuum(entry.runtime_data)])
 
 
@@ -191,7 +219,7 @@ class NarwalVacuum(NarwalEntity, StateVacuumEntity):
     @callback
     def _check_segments_changed(self) -> None:
         """Raise HA's repair issue when the robot's rooms change after mapping."""
-        if Segment is None or self.registry_entry is None or self._segments_issue_raised:
+        if not _CLEAN_AREA or self.registry_entry is None or self._segments_issue_raised:
             return
         last_seen = self.last_seen_segments
         rooms = self.state_data.rooms
@@ -241,3 +269,221 @@ class NarwalVacuum(NarwalEntity, StateVacuumEntity):
             raise ServiceValidationError(
                 f"Unknown command {command!r}; supported: clean_rooms, {', '.join(_SIMPLE_COMMANDS)}"
             )
+class Bx3Vacuum(Bx3Entity, StateVacuumEntity):
+    """Freo S vacuum: start, pause, stop, dock, suction, and room cleaning."""
+
+    _attr_translation_key = "narwal"
+    _attr_supported_features = (
+        VacuumEntityFeature.STATE
+        | VacuumEntityFeature.STATUS  # more-info header still uses attributes.status
+        | VacuumEntityFeature.START
+        | VacuumEntityFeature.STOP
+        | VacuumEntityFeature.PAUSE
+        | VacuumEntityFeature.RETURN_HOME
+        | VacuumEntityFeature.FAN_SPEED
+        | VacuumEntityFeature.SEND_COMMAND
+        | _CLEAN_AREA
+    )
+    _attr_fan_speed_list = list(SUCTION_LEVELS)
+
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(coordinator, "vacuum")
+        self._segments_issue_raised = False
+
+    @property
+    def activity(self) -> VacuumActivity:
+        return _ACTIVITY.get(self.state_data.activity, VacuumActivity.IDLE)
+
+    @property
+    def fan_speed(self) -> str | None:
+        """Device suction while a task runs; otherwise the next-clean preference.
+
+        While cleaning or paused, ``set_fan_speed`` writes ``clean.suction_level``
+        live and also stores the preference for the next start.
+        """
+        return SUCTION_BY_LEVEL.get(self._display_suction())
+
+    def _display_suction(self) -> int:
+        state = self.state_data
+        if state.task_active and state.suction is not None:
+            return state.suction
+        return self.coordinator.effective_suction()
+
+    def _display_water(self) -> int:
+        state = self.state_data
+        if state.task_active and state.water is not None:
+            return state.water
+        return self.coordinator.effective_water()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        state = self.state_data
+        next_suction = self.coordinator.effective_suction()
+        next_water = self.coordinator.effective_water()
+        current_suction = state.suction
+        current_water = state.water
+        language = getattr(self.hass.config, "language", None) or "en"
+        attrs: dict[str, Any] = {
+            "status": localized_status(state, language),
+            "rooms": {room.room_id: room.display_name for room in state.rooms},
+            "no_go_rooms": [],
+            # Displayed levels follow the device during a task, else the next clean.
+            "suction_level": self._display_suction(),
+            "water_level": self._display_water(),
+            "suction_level_current": current_suction,
+            "suction_next_clean": next_suction,
+            "water_level_current": current_water,
+            "water_next_clean": next_water,
+            "clean_rooms": state.clean_room_ids,
+            "map_id": state.map_id,
+        }
+        if state.current_room:
+            attrs["current_room"] = state.current_room
+        if state.progress is not None:
+            attrs["cleaning_progress"] = state.progress
+        if state.fault:
+            attrs["fault"] = state.fault
+        return attrs
+
+    async def async_start(self) -> None:
+        if self.state_data.activity == ACTIVITY_PAUSED:
+            await self._run(self.coordinator.client.resume())
+        else:
+            await self._clean_rooms([room.room_id for room in self.state_data.rooms])
+        await self.coordinator.async_request_refresh()
+
+    async def async_stop(self, **kwargs: Any) -> None:
+        await self._run(self.coordinator.client.stop())
+        await self.coordinator.async_request_refresh()
+
+    async def async_pause(self) -> None:
+        await self._run(self.coordinator.client.pause())
+        await self.coordinator.async_request_refresh()
+
+    async def async_return_to_base(self, **kwargs: Any) -> None:
+        await self._run(self.coordinator.client.recall())
+        await self.coordinator.async_request_refresh()
+
+    async def async_set_fan_speed(self, fan_speed: str, **kwargs: Any) -> None:
+        level = SUCTION_LEVELS.get(fan_speed)
+        if level is None:
+            raise ServiceValidationError(
+                f"Unknown fan speed {fan_speed!r}; use one of {list(SUCTION_LEVELS)}"
+            )
+        # A live change also becomes the next-clean preference.
+        self.coordinator.set_pref(suction=fan_speed)
+        if self.state_data.activity in (ACTIVITY_CLEANING, ACTIVITY_PAUSED):
+            # Captured mid-clean: property/up set clean.suction_level.
+            await self._run(self.coordinator.client.set_suction(level))
+        self.async_write_ha_state()
+
+    async def async_get_segments(self) -> list[Any]:
+        if not self.state_data.rooms:
+            await self._run(self.coordinator.client.get_reported({"map": []}))
+        return [
+            Segment(id=str(room.room_id), name=room.display_name)
+            for room in self.state_data.rooms
+        ]
+
+    async def async_clean_segments(self, segment_ids: list[str], **kwargs: Any) -> None:
+        await self._clean_rooms([int(segment) for segment in segment_ids])
+
+    async def _clean_rooms(
+        self,
+        room_ids: list[int],
+        *,
+        sweep_type: int | None = None,
+        suction: int | None = None,
+        water: int | None = None,
+        passes: int | None = None,
+    ) -> None:
+        if not room_ids:
+            raise ServiceValidationError(
+                "The robot has not reported its rooms yet. Wait for the map, then try again."
+            )
+        known = {room.room_id for room in self.state_data.rooms}
+        unknown = [room for room in room_ids if known and room not in known]
+        if unknown:
+            raise ServiceValidationError(
+                f"Unknown room id(s) {unknown}; known rooms: {sorted(known)}"
+            )
+        map_id = self.state_data.map_id
+        if not map_id:
+            raise ServiceValidationError("The robot has not reported its map yet.")
+        await self._run(self.coordinator.client.start_sweep(
+            room_ids,
+            map_id=map_id,
+            suction=self.coordinator.effective_suction() if suction is None else suction,
+            water=self.coordinator.effective_water() if water is None else water,
+            sweep_type=self.coordinator.sweep_type if sweep_type is None else sweep_type,
+            passes=self.coordinator.passes if passes is None else passes,
+        ))
+        await self.coordinator.async_request_refresh()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._check_segments_changed()
+        super()._handle_coordinator_update()
+
+    @callback
+    def _check_segments_changed(self) -> None:
+        if not _CLEAN_AREA or self.registry_entry is None or self._segments_issue_raised:
+            return
+        last_seen = self.last_seen_segments
+        rooms = self.state_data.rooms
+        if last_seen is None or not rooms:
+            return
+        current = {(str(room.room_id), room.display_name) for room in rooms}
+        if current != {(segment.id, segment.name) for segment in last_seen}:
+            self.async_create_segments_issue()
+            self._segments_issue_raised = True
+
+    async def async_send_command(
+        self,
+        command: str,
+        params: dict[str, Any] | list[Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """``clean_rooms`` with optional mode, fan_speed, water_level and passes.
+
+        ``set_schedule_enabled`` rewrites the whole schedule list with one
+        entry's state changed: params ``id`` and ``enabled``.
+        """
+        data = params if isinstance(params, dict) else {}
+        if command == "clean_rooms":
+            rooms = data.get("rooms") or []
+            if not rooms:
+                raise ServiceValidationError("clean_rooms needs params.rooms (a list of room ids)")
+            mode = data.get("mode")
+            if mode is not None and mode not in SWEEP_TYPES:
+                raise ServiceValidationError(
+                    f"Unknown mode {mode!r}; use one of {list(SWEEP_TYPES)}"
+                )
+            fan = data.get("fan_speed")
+            if fan is not None and fan not in SUCTION_LEVELS:
+                raise ServiceValidationError(
+                    f"Unknown fan_speed {fan!r}; use one of {list(SUCTION_LEVELS)}"
+                )
+            water = data.get("water_level")
+            if water is not None and water not in WATER_LEVELS:
+                raise ServiceValidationError(
+                    f"Unknown water_level {water!r}; use one of {list(WATER_LEVELS)}"
+                )
+            await self._clean_rooms(
+                [int(room) for room in rooms],
+                sweep_type=SWEEP_TYPES[mode] if mode else None,
+                suction=SUCTION_LEVELS[fan] if fan else None,
+                water=WATER_LEVELS[water] if water else None,
+                passes=int(data["passes"]) if data.get("passes") else None,
+            )
+        elif command == "set_schedule_enabled":
+            if "id" not in data or "enabled" not in data:
+                raise ServiceValidationError("set_schedule_enabled needs params.id and params.enabled")
+            await self._run(self.coordinator.async_set_schedule_enabled(int(data["id"]), bool(data["enabled"])))
+            self.coordinator.async_set_updated_data(self.coordinator.client.state)
+        else:
+            raise ServiceValidationError(
+                "Unknown command; supported: clean_rooms, set_schedule_enabled"
+            )
+
+

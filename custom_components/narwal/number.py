@@ -8,8 +8,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import NarwalConfigEntry
+from .const import PROTOCOL_THING
 from .coordinator import NarwalCoordinator
-from .entity import NarwalEntity
+from .entity import Bx3Entity, NarwalEntity
+from .thing_coordinator import ThingCoordinator
 
 
 async def async_setup_entry(
@@ -17,6 +19,9 @@ async def async_setup_entry(
     entry: NarwalConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
+    if entry.runtime_data.protocol == PROTOCOL_THING:
+        async_add_entities([Bx3CleanPasses(entry.runtime_data)])
+        return
     coordinator = entry.runtime_data
     async_add_entities([NarwalVolume(coordinator), NarwalCleanPasses(coordinator)])
 
@@ -80,3 +85,36 @@ class NarwalCleanPasses(NarwalEntity, RestoreNumber):
     async def async_set_native_value(self, value: float) -> None:
         self.coordinator.clean_passes = int(value)
         self.async_write_ha_state()
+
+class Bx3CleanPasses(Bx3Entity, NumberEntity):
+    """How many passes ``start_sweep`` asks for. 1 or 2, from the options flow.
+
+    The Freo S capture reports ``suction_level`` and ``water_level`` on the
+    clean module, but not ``sweep_times`` / ``mop_times`` as live properties.
+    This entity is therefore always the next-clean preference.
+    """
+
+    _attr_translation_key = "clean_passes"
+    _attr_icon = "mdi:repeat"
+    _attr_native_min_value = 1
+    _attr_native_max_value = 2
+    _attr_native_step = 1
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(coordinator, "clean_passes")
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    @property
+    def native_value(self) -> float:
+        return float(self.coordinator.passes)
+
+    async def async_set_native_value(self, value: float) -> None:
+        passes = min(2, max(1, int(value)))
+        self.coordinator.set_pref(passes=passes)
+        self.async_write_ha_state()
+
+

@@ -1,0 +1,31 @@
+{
+  "request": {
+    "topic": "thing/action/request",
+    "payload": {
+      "method": "invoke",
+      "actionIdentifier": "recall_station",
+      "messageId": "00000000-0000-4000-8000-000000000013",
+      "module": "clean",
+      "input": {}
+    }
+  },
+  "responses": [
+    {
+      "topic": "thing/action/request/reply",
+      "payload": {
+        "code": 0,
+        "method": "invoke",
+        "messageId": "00000000-0000-4000-8000-000000000014"
+      }
+    },
+    {
+      "topic": "thing/action/invoke/reply",
+      "payload": {
+        "code": 0,
+        "messageId": "00000000-0000-4000-8000-000000000015",
+        "method": "invoke"
+      }
+    }
+  ],
+  "note": "topic prefix: /<product_key=ZTM5lnVgLG>/<device_id>/"
+}

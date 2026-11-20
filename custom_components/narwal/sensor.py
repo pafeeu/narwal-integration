@@ -17,11 +17,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import NarwalConfigEntry
+from .const import PROTOCOL_THING
 from .coordinator import NarwalCoordinator
-from .entity import NarwalEntity
+from .entity import Bx3Entity, NarwalEntity
 from .narwal_client import NarwalState
 from .narwal_client.error_codes import error_message
 from .narwal_client.proto import enum_labels
+from .narwal_client.thing_protocol import localized_status
+from .thing_coordinator import ThingCoordinator
 
 CONSUMABLE_NAMES = {
     "CONSUMABLE_MAINTAIN_ITEM_DUST_BOX": "Clean the dust bin",
@@ -176,6 +179,19 @@ async def async_setup_entry(
     entry: NarwalConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
+    if entry.runtime_data.protocol == PROTOCOL_THING:
+        coordinator = entry.runtime_data
+        async_add_entities([
+            Bx3BatterySensor(coordinator),
+            Bx3StatusSensor(coordinator),
+            Bx3ErrorSensor(coordinator),
+            Bx3DurationSensor(coordinator),
+            Bx3AreaSensor(coordinator),
+            Bx3ProgressSensor(coordinator),
+            Bx3CurrentRoomSensor(coordinator),
+            Bx3SchedulesSensor(coordinator),
+        ])
+        return
     coordinator = entry.runtime_data
     async_add_entities(NarwalSensor(coordinator, d) for d in SENSORS)
 
@@ -197,3 +213,165 @@ class NarwalSensor(NarwalEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any] | None:
         fn = self.entity_description.attrs_fn
         return fn(self.state_data) if fn else None
+
+class Bx3Sensor(Bx3Entity, SensorEntity):
+    """One reported ThingModel value."""
+
+    def __init__(
+        self,
+        coordinator: ThingCoordinator,
+        key: str,
+        *,
+        device_class: SensorDeviceClass | None = None,
+        state_class: SensorStateClass | None = None,
+        unit: str | None = None,
+        suggested_unit: str | None = None,
+        icon: str | None = None,
+    ) -> None:
+        super().__init__(coordinator, key)
+        self._attr_translation_key = key
+        self._attr_device_class = device_class
+        self._attr_state_class = state_class
+        self._attr_native_unit_of_measurement = unit
+        self._attr_suggested_unit_of_measurement = suggested_unit
+        self._attr_icon = icon
+
+
+class Bx3BatterySensor(Bx3Sensor):
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(
+            coordinator, "battery",
+            device_class=SensorDeviceClass.BATTERY,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=PERCENTAGE,
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        return self.state_data.battery
+
+
+class Bx3StatusSensor(Bx3Sensor):
+    """Localized Freo S status (same phrasing as the vacuum more-info header)."""
+
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(coordinator, "status", icon="mdi:robot-vacuum")
+
+    @property
+    def native_value(self) -> str:
+        language = getattr(self.hass.config, "language", None) or "en"
+        return localized_status(self.state_data, language)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        state = self.state_data
+        return {
+            "status_code": state.status_code,
+            "activity": state.activity,
+            "in_station": state.in_station,
+        }
+
+
+class Bx3ErrorSensor(Bx3Sensor):
+    """Fault text comes from translations of ``no_error`` and ``unknown_fault``."""
+
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(
+            coordinator, "error",
+            device_class=SensorDeviceClass.ENUM,
+            icon="mdi:alert-circle-outline",
+        )
+        self._attr_options = ["no_error", "unknown_fault"]
+
+    @property
+    def native_value(self) -> str:
+        if not self.state_data.fault:
+            return "no_error"
+        return "unknown_fault"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"code": self.state_data.fault or 0}
+
+
+class Bx3DurationSensor(Bx3Sensor):
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(
+            coordinator, "elapsed_time",
+            device_class=SensorDeviceClass.DURATION,
+            unit=UnitOfTime.MINUTES,
+            icon="mdi:timer-outline",
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        return self.state_data.cleaning_time
+
+
+class Bx3AreaSensor(Bx3Sensor):
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(
+            coordinator, "cleaned_area",
+            device_class=SensorDeviceClass.AREA,
+            unit=UnitOfArea.SQUARE_METERS,
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        return self.state_data.cleaning_area
+
+
+class Bx3ProgressSensor(Bx3Sensor):
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(
+            coordinator, "progress",
+            unit=PERCENTAGE,
+            icon="mdi:progress-check",
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        return self.state_data.progress
+
+
+class Bx3CurrentRoomSensor(Bx3Sensor):
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(coordinator, "current_room", icon="mdi:floor-plan")
+
+    @property
+    def native_value(self) -> str | None:
+        return self.state_data.current_room
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"room_ids": self.state_data.clean_room_ids}
+
+
+class Bx3SchedulesSensor(Bx3Sensor):
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(coordinator, "schedules", icon="mdi:calendar-clock")
+
+    @property
+    def native_value(self) -> int:
+        return sum(1 for entry in self.state_data.schedules if entry.enabled)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        tz = self.coordinator.schedule_tz()
+        rows = []
+        lines = []
+        for entry in self.state_data.schedules:
+            row = entry.as_dict(tz)
+            names = []
+            for room_id in entry.rooms:
+                name = self.state_data.room_name(room_id)
+                names.append(name if name else f"#{room_id}")
+            row["room_names"] = names
+            rows.append(row)
+            status = "enabled" if entry.enabled else "disabled"
+            lines.append(
+                f"{entry.id} {status} {entry.time_label(tz)} {entry.days_label}: {', '.join(names)}"
+            )
+        return {"schedules": rows, "lines": lines, "timing": self.state_data.raw_timing}
+
+

@@ -1,0 +1,102 @@
+set_schedules:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: narwal
+          domain: vacuum
+      example: vacuum.narwal_freo_s_narwal_vacuum
+    timing:
+      selector:
+        text:
+          multiline: true
+      example: "10-1-15:50-0010100-1-1779376970-2-2-0-1-1-7,1"
+    schedule_id:
+      selector:
+        number:
+          min: 1
+          mode: box
+      example: 10
+    enabled:
+      selector:
+        boolean:
+      example: false
+
+schedule_clean_once:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: narwal
+          domain: vacuum
+      example: vacuum.narwal_freo_s_narwal_vacuum
+    date:
+      required: true
+      selector:
+        date:
+      example: "2026-10-03"
+    time:
+      required: true
+      selector:
+        time:
+      example: "10:30:00"
+    rooms:
+      selector:
+        text:
+          multiple: true
+      example: '["Kuchnia", "1"]'
+    areas:
+      selector:
+        area:
+          multiple: true
+    mode:
+      selector:
+        select:
+          options:
+            - "Vacuum Only"
+            - "Vacuum & Mop"
+          translation_key: freo_clean_mode
+    suction:
+      selector:
+        select:
+          options:
+            - Quiet
+            - Normal
+            - Strong
+            - Max
+          translation_key: freo_suction
+    water:
+      selector:
+        select:
+          options:
+            - low
+            - medium
+            - high
+          translation_key: freo_water
+    passes:
+      selector:
+        number:
+          min: 1
+          max: 2
+          step: 1
+          mode: box
+      example: 1
+
+delete_schedule:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: narwal
+          domain: vacuum
+      example: vacuum.narwal_freo_s_narwal_vacuum
+    schedule_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+      example: 10

@@ -29,9 +29,133 @@ A custom Home Assistant integration for **Narwal** robot vacuums (Freo X Ultra a
 
 This integration has been tested with:
 
-- Narwal Freo X Ultra
+- Narwal Freo X Ultra (protobuf cloud protocol)
+- Narwal Freo S (ThingModel JSON protocol, product group BX3)
 
-Other Narwal models using the same cloud platform should also work.
+Other Narwal models that use the Freo X Ultra protobuf topics should also work. The integration picks the protocol from the robot's product key, product group, or the cloud flag `switch_to_robothings`. A Freo X Ultra entry is unchanged.
+
+## Freo S (BX3)
+
+The Freo S (product key `ZTM5lnVgLG`, product group `BX3`) answers plain JSON on `/<productKey>/<deviceId>/thing/...` and does not answer the protobuf commands used by the Freo X Ultra. Setup is the same account login. With one robot it is added immediately; the protocol follows the product.
+
+What you get:
+
+- Vacuum: start, pause, resume, stop, return to dock, suction (Quiet / Normal / Strong / Max)
+- Room cleaning: Home Assistant 2026.3+ `vacuum.clean_area` (rooms are segments), and `vacuum.send_command` → `clean_rooms`
+- Sensors: battery, status, error, docked, charging, cleaning time, cleaned area, progress, current room, schedules
+- Water level and clean mode (Vacuum & Mop, or Vacuum Only). Both are sent with the next clean
+- Schedules: read on the Schedules sensor; write with `narwal.set_schedules` (always the whole list)
+
+Suction and water are included in `start_sweep`. While cleaning or paused, suction is also written live with `method` `set` on `clean.suction_level` (captured 2026-11-20). Water uses the same shape on `clean.water_level` (not captured live — unverified). While docked, changes are stored for the next clean. A live change also updates that next-clean preference. Resume (`continue_sweep`) and stop (`stop_sweeping`) use the same empty invoke envelope as pause; stop was not in the capture. Whole-home start sends every room id with the same payload as a room clean.
+
+`narwal.set_schedules` either replaces the list or flips one entry after reading the current list:
+
+```yaml
+action: narwal.set_schedules
+data:
+  entity_id: vacuum.narwal_freo_s_narwal_vacuum
+  schedule_id: 10
+  enabled: false
+```
+
+`timing` (the sensor's `timing` attribute) replaces the whole list instead. The string is `id-state-time-days-repeat-map-suction-water-sweep_type-sweep_times-mop_times-rooms`, entries separated by `;`. Days are 7 characters, Sunday first. State `1` is enabled, `0` disabled.
+
+There is no live map image for the Freo S. Room names come from the map property. The Lovelace card still lists those rooms; it hides locate and dock maintenance actions this model does not expose, and it offers only the clean modes the select entity has.
+
+### Live check script
+
+`scripts/freo_s_live.py` talks to a real robot with the same client. It imports `narwal_client` on its own, so Home Assistant does not need to be installed. The only dependency is `paho-mqtt`. Credentials stay in the environment (or `scripts/.env`, which is gitignored). It never prints the password or the token.
+
+The Narwal broker port 8883 is often blocked outside the home server. Run the script inside the Home Assistant container, which already has Python 3 and paho and can reach the broker:
+
+```bash
+docker exec -it <ha-container> python3 /config/scripts/freo_s_live.py
+```
+
+Use the path where this repository is mounted. From a checkout that can reach the broker:
+
+```bash
+pip install -r requirements.txt
+export NARWAL_EMAIL='you@example.com'
+export NARWAL_PASSWORD='your-password'
+export NARWAL_REGION=us   # us, il, eu, or cn. Default for this script: us
+# optional, required when the account has more than one ThingModel robot:
+# export NARWAL_DEVICE_ID='the 32-character device id'
+python scripts/freo_s_live.py
+```
+
+One read at a time: `status`, `map`, `schedules`, `heartbeat`, `map-grid` (downloads the map and prints only its size).
+
+Commands that move the robot or write schedules are separate and require `--yes`:
+
+```bash
+python scripts/freo_s_live.py recall --yes
+python scripts/freo_s_live.py pause --yes
+python scripts/freo_s_live.py resume --yes
+python scripts/freo_s_live.py stop --yes
+python scripts/freo_s_live.py start --rooms 5 --yes
+python scripts/freo_s_live.py set-schedule --id 10 --enabled false --yes
+```
+
+`start` and `set-schedule` change what the robot does. `recall` drives it home. Run them yourself, one at a time.
+
+While cleaning or paused, `set_fan_speed` publishes `clean.suction_level` live and updates the displayed current value; it also stores the next-clean preference. Water does the same with `clean.water_level` (unverified live). When idle or docked, only the preference is stored. Attributes `suction_level_current` / `suction_next_clean` and `water_level_current` / `water_next_clean` expose both. Passes stay next-clean only: the capture does not report `sweep_times` as a live property.
+
+Live script: `set-suction N --yes` and `set-water N --yes` (N = 1–4 suction, 1–3 water).
+
+### Defaults
+
+On a Freo S entry: **Settings → Devices & services → Narwal Robot Vacuum → Configure**.
+
+| Option | Default |
+|---|---|
+| Clean mode | Vacuum Only |
+| Passes | 1 (allowed 1–2) |
+| Suction | Normal |
+| Water | medium |
+
+These are used by Start, Clean area, and a one-time schedule when that call does not pass its own values. The clean-mode, suction, water, and passes entities edit the same options.
+
+### Clean area
+
+Home Assistant 2026.3 and newer:
+
+1. **Settings → Devices & services → Entities**
+2. Open the Narwal vacuum entity
+3. Select the cogwheel
+4. Select **Map vacuum segments to areas**
+5. Match each robot room to a Home Assistant area and save
+
+Then use the action **Clean area with vacuum cleaner** (`vacuum.clean_area`). Area ids are under **Settings → Areas, labels & zones** → the area → edit → Area ID.
+
+The integration must be running a Home Assistant build that includes `VacuumEntityFeature.CLEAN_AREA` (2026.3+). This repository's tests run on the version installed with `requirements_test.txt`, which may be older; the entity method is still there.
+
+### Schedules
+
+The Schedules sensor state is how many entries are enabled. Attributes:
+
+- `lines`: one readable row per entry
+- `schedules`: id, enabled, time, days, rooms, room names, suction, water
+- `timing`: the raw list the robot stores
+
+```yaml
+# One-time clean. Reuses a disabled one-time row when one exists.
+action: narwal.schedule_clean_once
+data:
+  entity_id: vacuum.narwal_freo_s_narwal_vacuum
+  date: "2026-10-03"
+  time: "10:30"
+  rooms: ["Kuchnia", 1]
+  # areas: ["kitchen"]   # Home Assistant area ids already mapped on this vacuum
+  # mode, suction, water, passes are optional
+
+action: narwal.delete_schedule
+data:
+  entity_id: vacuum.narwal_freo_s_narwal_vacuum
+  schedule_id: 10
+```
+
+Both read the current list first and write the whole list back. One-time `date`/`time` are Home Assistant local wall time (`hass.config.time_zone`). They are converted to a UTC unix epoch on the wire; the Narwal app shows that instant in local time (live: Europe/Warsaw UTC+1, HA 13:10 → app 14:10 when the epoch was tagged as UTC without conversion). The Schedules sensor shows local times again and keeps `time_raw` (and `time_utc` for one-shot rows). Weekly entries use a plain `HH:MM` local clock face with no conversion; the timing string has no timezone field. Deleting the last remaining entry is refused; disable it with `narwal.set_schedules` instead.
 
 ## Installation
 
@@ -154,15 +278,18 @@ custom_components/narwal/
 ├── __init__.py              # Integration setup/teardown, card registration
 ├── config_flow.py           # Two-step UI config flow (login + device)
 ├── const.py                 # HA-level constants (fan speeds, clean modes)
-├── coordinator.py           # MQTT pushes + polling, token refresh, map/settings refresh
-├── entity.py                # Base entity: device info, command error handling
-├── vacuum.py                # Vacuum entity, clean area (segments), send_command
+├── coordinator.py           # Protobuf MQTT pushes + polling, token refresh
+├── thing_coordinator.py     # Freo S polling, map fetch, schedule writes
+├── entity.py                # Base entities for both protocols
+├── vacuum.py                # Vacuum entities (protobuf and Freo S)
 ├── sensor.py / binary_sensor.py / select.py / switch.py / number.py / button.py
-├── camera.py                # Map rendering (coordinator owns map fetching)
+├── camera.py                # Protobuf map image (Freo S has no rendered map)
 ├── strings.json, translations/en.json
 ├── frontend/narwal-vacuum-card.js
 └── narwal_client/           # Standalone Narwal protocol library
-    ├── client.py             # MQTT client: connect, commands, pushes
+    ├── client.py             # Protobuf MQTT client
+    ├── thing_client.py       # Freo S ThingModel MQTT client
+    ├── thing_protocol.py     # Freo S JSON payloads, schedules, status
     ├── cloud.py              # REST API client (login, refresh)
     ├── const.py              # Topics, enums matching the app
     ├── models.py             # NarwalState: activity, status, rooms, map geometry

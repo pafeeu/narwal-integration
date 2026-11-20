@@ -1,0 +1,47 @@
+{
+  "request": {
+    "topic": "thing/property/up",
+    "payload": {
+      "method": "getReported",
+      "messageId": "00000000-0000-4000-8000-000000000001",
+      "properties": {
+        "robot_status": []
+      }
+    }
+  },
+  "responses": [
+    {
+      "topic": "thing/property/up/reply",
+      "payload": {
+        "method": "getReported",
+        "messageId": "00000000-0000-4000-8000-000000000002",
+        "payload": {
+          "code": 0,
+          "robot_status": {
+            "robot_in_station": {
+              "time": 1795113074764,
+              "value": true
+            },
+            "station_contacted": {
+              "time": 1795113074763,
+              "value": true
+            },
+            "fault": {
+              "time": 1795112633187,
+              "value": 0
+            },
+            "battery_percentage": {
+              "time": 1795117357137,
+              "value": 100
+            },
+            "status": {
+              "time": 1795117359974,
+              "value": 9
+            }
+          }
+        }
+      }
+    }
+  ],
+  "note": "topic prefix: /<product_key=ZTM5lnVgLG>/<device_id>/"
+}

@@ -71,6 +71,8 @@ def test_device_list_parsing() -> None:
     assert req.call_args.args[:2] == ("GET", "/user-device-platform-server/device-info/getDeviceInfoList")
     assert devices == [NarwalDevice("a" * 32, "EHf6cRNRGT", "Freo", "Narwal Freo X Ultra", "v01.09.01.00")]
     assert devices[0].label == "Freo (Narwal Freo X Ultra)"
+    assert devices[0].product_group == "J4"
+    assert devices[0].thing_model is None
 
 
 async def test_single_robot_is_added_without_questions(hass: HomeAssistant) -> None:
@@ -132,6 +134,60 @@ async def test_wrong_password(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
         result = await hass.config_entries.flow.async_configure(result["flow_id"], LOGIN)
     assert result["type"] is FlowResultType.FORM and result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_freo_s_is_marked_thing_model_even_when_the_flag_is_false(hass: HomeAssistant) -> None:
+    """BX3 speaks ThingModel whether or not switch_to_robothings is set."""
+    robot = NarwalDevice("c" * 32, "ZTM5lnVgLG", "Downstairs", "", "v01.01.64.00", "BX3", False)
+    result = await _start(hass, devices=[robot])
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"]["protocol"] == "thing"
+    assert result["data"]["product_group"] == "BX3"
+    assert result["data"]["product_key"] == "ZTM5lnVgLG"
+    assert result["data"]["model"] == "Narwal Freo S"
+    assert result["data"]["firmware"] == "v01.01.64.00"
+
+
+async def test_switch_to_robothings_selects_thing_model_for_an_unknown_product(hass: HomeAssistant) -> None:
+    robot = NarwalDevice("d" * 32, "NEWPRODUCT", "New", "Future model", thing_model=True)
+    result = await _start(hass, devices=[robot])
+    assert result["data"]["protocol"] == "thing"
+    assert result["data"]["model"] == "Future model"
+
+
+async def test_manual_freo_s_product_key_selects_thing_model(hass: HomeAssistant) -> None:
+    result = await _start(hass, error=NarwalCloudError("boom"))
+    done = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"product_key": "ZTM5lnVgLG", "device_name": "e" * 32}
+    )
+    assert done["type"] is FlowResultType.CREATE_ENTRY
+    assert done["data"]["protocol"] == "thing"
+    assert done["data"]["model"] == "Narwal Freo S"
+
+
+def test_device_list_reads_the_thing_model_flag() -> None:
+    cloud = NarwalCloud(region="us")
+    reply = {
+        "code": 0,
+        "result": {
+            "deviceInfoList": [{
+                "deviceId": "f" * 32,
+                "productId": "NEWPRODUCT",
+                "robotName": "New",
+                "application_user_params": {"switch_to_robothings": True},
+            }],
+            "productInfoList": [{
+                "productId": "NEWPRODUCT",
+                "productModel": "Future model",
+                "productGroup": "ZZ",
+            }],
+        },
+    }
+    with patch.object(NarwalCloud, "_request", return_value=reply):
+        device = cloud.get_devices()[0]
+    assert device.thing_model is True
+    assert device.product_group == "ZZ"
+    assert device.model == "Future model"
 
 
 def test_wrong_password_reply_is_an_auth_error() -> None:

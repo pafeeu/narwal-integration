@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import NarwalConfigEntry
+from .const import PROTOCOL_THING
 from .coordinator import NarwalCoordinator
 from .entity import NarwalEntity
 from .narwal_client import NarwalClient
@@ -42,6 +43,9 @@ async def async_setup_entry(
     entry: NarwalConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
+    if entry.runtime_data.protocol == PROTOCOL_THING:
+        async_add_entities([])
+        return
     coordinator = entry.runtime_data
     async_add_entities(NarwalButton(coordinator, d) for d in BUTTONS)
 

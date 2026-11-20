@@ -1,0 +1,335 @@
+[
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000001",
+      "nextVersion": 47916,
+      "property": {
+        "clean": {
+          "sweep_type": {
+            "time": 1795163433477,
+            "value": 2
+          }
+        }
+      }
+    }
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000002",
+      "nextVersion": 47917,
+      "property": {
+        "clean": {
+          "clean_rooms": {
+            "time": 1795163434099,
+            "value": [
+              5
+            ]
+          },
+          "cleaning_time": {
+            "time": 1795163434116,
+            "value": 0
+          },
+          "clean_type": {
+            "time": 1795163434095,
+            "value": 2
+          },
+          "cleaning_area": {
+            "time": 1795163434105,
+            "value": 0
+          },
+          "cleaning_progress": {
+            "time": 1795163434106,
+            "value": 0
+          }
+        },
+        "robot_status": {
+          "status": {
+            "time": 1795163434089,
+            "value": 4
+          }
+        }
+      }
+    }
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000003",
+      "nextVersion": 47918,
+      "property": {
+        "robot_status": {
+          "robot_in_station": {
+            "time": 1795163435681,
+            "value": false
+          },
+          "station_contacted": {
+            "time": 1795163435675,
+            "value": false
+          }
+        }
+      }
+    }
+  },
+  {
+    "topic": "thing/event/down",
+    "payload": {
+      "method": "reported",
+      "module": "map",
+      "messageId": "00000000-0000-4000-8000-000000000200",
+      "eventIdentifier": "map_updated",
+      "output": {
+        "map_id": 1779376970
+      }
+    }
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000004",
+      "nextVersion": 47919,
+      "property": {
+        "robot_status": {
+          "battery_percentage": {
+            "time": 1795163450353,
+            "value": 99
+          }
+        }
+      }
+    }
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000005",
+      "nextVersion": 47920,
+      "property": {
+        "robot_status": {
+          "battery_percentage": {
+            "time": 1795163464105,
+            "value": 98
+          }
+        }
+      }
+    }
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000006",
+      "nextVersion": 47921,
+      "property": {
+        "robot_status": {
+          "battery_percentage": {
+            "time": 1795163478449,
+            "value": 97
+          }
+        }
+      }
+    }
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000007",
+      "nextVersion": 47922,
+      "property": {
+        "clean": {
+          "cleaning_progress": {
+            "time": 1795163486724,
+            "value": 1
+          }
+        }
+      }
+    }
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000008",
+      "nextVersion": 47923,
+      "property": {
+        "clean": {
+          "cleaning_progress": {
+            "time": 1795163489683,
+            "value": 2
+          }
+        }
+      }
+    }
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000009",
+      "nextVersion": 47924,
+      "property": {
+        "clean": {
+          "cleaning_progress": {
+            "time": 1795163490970,
+            "value": 1
+          }
+        }
+      }
+    }
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000010",
+      "nextVersion": 47925,
+      "property": {
+        "clean": {
+          "cleaning_progress": {
+            "time": 1795163491787,
+            "value": 2
+          }
+        },
+        "robot_status": {
+          "status": {
+            "time": 1795163491785,
+            "value": 3
+          }
+        }
+      }
+    }
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000011",
+      "nextVersion": 47926,
+      "property": {
+        "robot_status": {
+          "battery_percentage": {
+            "time": 1795163495122,
+            "value": 96
+          }
+        }
+      }
+    }
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000012",
+      "nextVersion": 47927,
+      "property": {
+        "clean": {
+          "clean_rooms": {
+            "time": 1795163522437,
+            "value": []
+          },
+          "clean_type": {
+            "time": 1795163522436,
+            "value": 0
+          }
+        },
+        "robot_status": {
+          "status": {
+            "time": 1795163522435,
+            "value": 2
+          }
+        }
+      }
+    }
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000013",
+      "nextVersion": 47928,
+      "property": {
+        "robot_status": {
+          "status": {
+            "time": 1795163523040,
+            "value": 5
+          }
+        }
+      }
+    }
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000014",
+      "nextVersion": 47929,
+      "property": {
+        "robot_status": {
+          "battery_percentage": {
+            "time": 1795163535771,
+            "value": 95
+          }
+        }
+      }
+    }
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000015",
+      "nextVersion": 47930,
+      "property": {
+        "robot_status": {
+          "battery_percentage": {
+            "time": 1795163584064,
+            "value": 94
+          }
+        }
+      }
+    }
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000301",
+      "nextVersion": 47931,
+      "property": {
+        "robot_status": {
+          "robot_in_station": {
+            "time": 1795163610071,
+            "value": true
+          },
+          "station_contacted": {
+            "time": 1795163610069,
+            "value": true
+          }
+        }
+      }
+    },
+    "note": "Captured after recall, before status 6. Added from the decoded capture; the sample file ended earlier."
+  },
+  {
+    "topic": "thing/property/down",
+    "payload": {
+      "method": "reported",
+      "messageId": "00000000-0000-4000-8000-000000000302",
+      "nextVersion": 47932,
+      "property": {
+        "robot_status": {
+          "status": {
+            "time": 1795163613696,
+            "value": 6
+          }
+        }
+      }
+    }
+  }
+]
