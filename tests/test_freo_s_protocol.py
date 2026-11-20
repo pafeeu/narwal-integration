@@ -9,6 +9,7 @@ from pathlib import Path
 
 from custom_components.narwal.const import entry_protocol
 from custom_components.narwal.narwal_client.thing_protocol import (
+    ThingSchedule,
     ThingState,
     apply_thing_message,
     build_get_reported,
@@ -189,23 +190,73 @@ def test_command_payloads_match_fixtures() -> None:
     assert build_get_reported("mid", {"clean": ["timing"]})["properties"] == timing_read["properties"]
 
 
-def test_one_time_schedule_overwrites_the_first_disabled_once_row() -> None:
+def test_one_time_schedule_uses_ha_local_time_with_dst() -> None:
+    """Local wall clock → UTC epoch; app shows UTC epoch in local time again."""
+    from datetime import timezone
+    from zoneinfo import ZoneInfo
+
     from custom_components.narwal.narwal_client.thing_protocol import (
         delete_schedule_id,
         once_timestamp,
         upsert_one_time,
     )
 
+    waw = ZoneInfo("Europe/Warsaw")
+    # Winter UTC+1: HA 13:10 → UTC 12:10 (live bug was tagging 13:10 as UTC → app 14:10).
+    winter = once_timestamp("2026-01-15", "13:10", tz=waw)
+    assert winter == 1768479000
+    assert once_timestamp("2026-01-15", "13:10:00", tz=waw) == winter
+    # Summer UTC+2: HA 13:10 → UTC 11:10.
+    summer = once_timestamp("2026-07-15", "13:10", tz=waw)
+    assert summer == 1784113800
+
+    winter_entry = next(
+        entry for entry in parse_timing_value(
+            upsert_one_time(
+                parse_timing_value(timing_inner(
+                    _load("get_reported_clean_all.json")["responses"][0]["payload"]["payload"]["clean"]["timing"]["value"]
+                )),
+                when=winter,
+                rooms=[6],
+                map_id=1779376970,
+                suction=2,
+                water=2,
+                sweep_type=0,
+                passes=1,
+            )
+        ) if entry.id == 8
+    )
+    assert winter_entry.state == 1
+    assert winter_entry.time == str(winter)
+    assert winter_entry.time_label(waw) == "13:10 1/15"
+    assert winter_entry.time_label(timezone.utc) == "12:10 1/15"
+    assert winter_entry.as_dict(waw)["time"] == "13:10 1/15"
+    assert winter_entry.as_dict(waw)["time_utc"] == "12:10 1/15"
+    assert winter_entry.as_dict(waw)["time_raw"] == str(winter)
+
+    summer_entry = ThingSchedule(
+        id=99, state=1, time=str(summer), days="0000000", repeat=0, map_id=1,
+        suction=2, water=2, sweep_type=0, sweep_times=1, mop_times=1, rooms=[1],
+    )
+    assert summer_entry.time_label(waw) == "13:10 7/15"
+    assert summer_entry.time_label(timezone.utc) == "11:10 7/15"
+
+    # Captured epochs: display in Warsaw, keep raw UTC label available.
+    captured = next(
+        entry for entry in parse_timing_value(timing_inner(
+            _load("get_reported_clean_all.json")["responses"][0]["payload"]["payload"]["clean"]["timing"]["value"]
+        )) if entry.id == 8
+    )
+    assert captured.time == "1791023400"
+    assert captured.time_label(timezone.utc) == "10:30 10/3"
+    assert captured.time_label(waw) == "12:30 10/3"
+
     original = timing_inner(
         _load("get_reported_clean_all.json")["responses"][0]["payload"]["payload"]["clean"]["timing"]["value"]
     )
-    # UTC printout of the captured epochs. The app's displayed clock is not in the capture.
-    assert once_timestamp("2026-10-03", "10:30") == 1791023400
-    assert once_timestamp("2026-10-03", "10:30:00") == 1791023400
-    assert once_timestamp("2026-09-21", "16:45") == 1790009100
     updated = upsert_one_time(
         parse_timing_value(original),
-        when=once_timestamp("2026-10-03", "10:30"),
+        when=winter,
         rooms=[6],
         map_id=1779376970,
         suction=2,
@@ -213,10 +264,6 @@ def test_one_time_schedule_overwrites_the_first_disabled_once_row() -> None:
         sweep_type=0,
         passes=1,
     )
-    reused = next(entry for entry in parse_timing_value(updated) if entry.id == 8)
-    assert reused.state == 1
-    assert reused.time_label == "10:30 10/3"
-    assert reused.rooms == [6]
     kept = delete_schedule_id(parse_timing_value(updated), 11)
     assert all(entry.id != 11 for entry in parse_timing_value(kept))
     assert encode_schedules(parse_timing_value(kept)) == kept
@@ -258,12 +305,17 @@ def test_schedule_rewrite_matches_the_captured_set() -> None:
     body = build_set_property("mid", {"clean": {"timing": {"value": disabled}}})
     assert body["method"] == "set"
     assert body["property"]["clean"]["timing"]["value"] == disabled
+    from datetime import timezone
+
     one_shot = next(entry for entry in parse_timing_value(original) if entry.id == 8)
-    assert one_shot.time_label == "10:30 10/3"
+    assert one_shot.time_label(timezone.utc) == "10:30 10/3"
     assert one_shot.days_label == "once"
     weekly = next(entry for entry in parse_timing_value(original) if entry.id == 10)
     assert weekly.days_label == "Tue, Thu"
-    assert weekly.time_label == "15:50"
+    # Weekly HH:MM is a local wall clock on the wire; no timezone conversion.
+    assert weekly.time_label() == "15:50"
+    assert weekly.as_dict()["time"] == "15:50"
+    assert "time_utc" not in weekly.as_dict()
 
 
 def test_map_blob_is_gzip() -> None:

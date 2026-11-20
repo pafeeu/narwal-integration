@@ -153,7 +153,7 @@ data:
   schedule_id: 10
 ```
 
-Both read the current list first and write the whole list back. A one-time time is stored as a UTC wall clock: captured id 8 (`1791023400`) prints as 10:30 on 3 October UTC, and id 9 (`1790009100`) as 16:45 on 21 September UTC. The capture does not include the time the app showed, so check that on the robot. In Poland those same instants are 12:30 and 18:45. Deleting the last remaining entry is refused; disable it with `narwal.set_schedules` instead.
+Both read the current list first and write the whole list back. One-time `date`/`time` are Home Assistant local wall time (`hass.config.time_zone`). They are converted to a UTC unix epoch on the wire; the Narwal app shows that instant in local time (live: Europe/Warsaw UTC+1, HA 13:10 → app 14:10 when the epoch was tagged as UTC without conversion). The Schedules sensor shows local times again and keeps `time_raw` (and `time_utc` for one-shot rows). Weekly entries use a plain `HH:MM` local clock face with no conversion; the timing string has no timezone field. Deleting the last remaining entry is refused; disable it with `narwal.set_schedules` instead.
 
 ## Installation
 

@@ -345,7 +345,7 @@
     },
     "schedule_clean_once": {
       "name": "Schedule a one-time Freo S clean",
-      "description": "Add one enabled one-time clean to the Freo S schedule. The integration reads the current list first and writes the whole list back. A disabled one-time entry is reused when one exists. The date and time are stored as a UTC wall clock. Whether the robot shows that same clock is not confirmed by the capture.",
+      "description": "Add one enabled one-time clean to the Freo S schedule. The integration reads the current list first and writes the whole list back. A disabled one-time entry is reused when one exists. Date and time are Home Assistant local time; they are converted to a UTC epoch on the wire so the Narwal app shows the same local clock.",
       "fields": {
         "entity_id": {
           "name": "Vacuum",
@@ -353,11 +353,11 @@
         },
         "date": {
           "name": "Date",
-          "description": "Date as YYYY-MM-DD."
+          "description": "Local date as YYYY-MM-DD (Home Assistant time zone)."
         },
         "time": {
           "name": "Time",
-          "description": "Clock time. Stored as UTC. The time picker may include seconds."
+          "description": "Local clock time (Home Assistant time zone). The time picker may include seconds."
         },
         "rooms": {
           "name": "Rooms",

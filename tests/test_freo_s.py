@@ -374,23 +374,53 @@ async def test_status_6_is_docked_and_current_room_is_a_name(hass: HomeAssistant
 
 
 async def test_one_time_schedule_reuses_a_disabled_entry(hass: HomeAssistant, freo) -> None:
+    from zoneinfo import ZoneInfo
+
+    await hass.config.async_set_time_zone("Europe/Warsaw")
     vacuum = _entity(hass, "vacuum", "vacuum")
+    # Winter UTC+1: local 13:10 must become UTC 12:10 on the wire (not 13:10 UTC).
     await hass.services.async_call(
         "narwal", "schedule_clean_once",
-        {"entity_id": vacuum, "date": "2026-10-03", "time": "10:30", "rooms": ["Kuchnia", 1]},
+        {"entity_id": vacuum, "date": "2026-01-15", "time": "13:10", "rooms": ["Kuchnia", 1]},
         blocking=True,
     )
     written = [call for call in freo.calls if call[0] == "set"][-1][1]
     inner = json.loads(written["clean"]["timing"]["value"])["time"]
     entries = parse_timing_value(inner)
     reused = next(entry for entry in entries if entry.id == 8)
+    waw = ZoneInfo("Europe/Warsaw")
+    expected = once_timestamp("2026-01-15", "13:10", tz=waw)
+    assert expected == 1768479000
     assert reused.state == 1
     assert reused.repeat == 0
     assert reused.days == "0000000"
-    assert reused.time == str(once_timestamp("2026-10-03", "10:30"))
+    assert reused.time == str(expected)
     assert reused.rooms == [6, 1]
     assert reused.sweep_type == 0
     assert any(entry.id == 9 and entry.state == 0 for entry in entries)
+
+    # Sensor presents local time; raw epoch stays on time_raw / time_utc.
+    freo.coordinator.client.state.schedules = entries
+    freo.coordinator.client.state.raw_timing = inner
+    freo.coordinator.async_set_updated_data(freo.coordinator.client.state)
+    await hass.async_block_till_done()
+    schedules = hass.states.get(_entity(hass, "sensor", "schedules")).attributes["schedules"]
+    once_row = next(row for row in schedules if row["id"] == 8)
+    assert once_row["time"] == "13:10 1/15"
+    assert once_row["time_utc"] == "12:10 1/15"
+    assert once_row["time_raw"] == str(expected)
+
+    # Summer UTC+2 — next disabled once row is id 9 (id 8 is already enabled).
+    await hass.services.async_call(
+        "narwal", "schedule_clean_once",
+        {"entity_id": vacuum, "date": "2026-07-15", "time": "13:10", "rooms": [6]},
+        blocking=True,
+    )
+    summer = json.loads([call for call in freo.calls if call[0] == "set"][-1][1]["clean"]["timing"]["value"])["time"]
+    summer_entry = next(entry for entry in parse_timing_value(summer) if entry.id == 9)
+    assert summer_entry.time == str(once_timestamp("2026-07-15", "13:10", tz=waw))
+    assert summer_entry.time == "1784113800"
+    assert summer_entry.state == 1
 
     await hass.services.async_call(
         "narwal", "delete_schedule",

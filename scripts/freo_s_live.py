@@ -144,7 +144,7 @@ def _print_schedules(client: ThingClient) -> None:
     for entry in entries:
         flag = "on" if entry.enabled else "off"
         print(
-            f"  {entry.id} {flag} {entry.time_label} {entry.days_label} "
+            f"  {entry.id} {flag} {entry.time_label()} {entry.days_label} "
             f"rooms={entry.rooms} suction={entry.suction} water={entry.water}"
         )
 

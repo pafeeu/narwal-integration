@@ -21,8 +21,9 @@ import base64
 import gzip
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from .models import (
     ACTIVITY_CLEANING,
@@ -258,10 +259,12 @@ class ThingSchedule:
 
     ``state`` 1 is enabled, 0 disabled, 2 shown as invalid in the app.
     ``days`` is 7 characters, index 0 = Sunday.
-    ``time`` is ``HH:MM`` for a weekly entry. A one-shot entry (repeat 0,
-    days ``0000000``) stores a unix epoch. Printing that epoch in UTC gives
-    10:30 on 10/3 for id 8 and 16:45 on 9/21 for id 9. The capture does not
-    include the clock the app showed, so that match is not proven.
+    ``time`` is ``HH:MM`` for a weekly entry (a local wall clock, as the app
+    stores it — there is no timezone field in the timing string). A one-shot
+    entry (repeat 0, days ``0000000``) stores a unix epoch. Live check: the
+    app treats that epoch as UTC and shows it in the phone's local zone, so
+    HA must convert the user's local date/time to UTC on write and back on
+    display. The capture has no ``tz`` / ``utc_offset`` field to set.
     ``sweep_type`` / ``sweep_times`` / ``mop_times`` are the three fields the
     capture left unnamed; 0 in the first of them matches a vacuum-only task.
     """
@@ -292,24 +295,30 @@ class ThingSchedule:
         return self.state == 1
 
     @property
+    def is_once(self) -> bool:
+        return self.repeat == 0 and self.time.isdigit()
+
+    @property
     def days_label(self) -> str:
         if self.days == "0000000":
             return "once"
         return ", ".join(name for name, bit in zip(_DAY_NAMES, self.days, strict=True) if bit == "1")
 
-    @property
-    def time_label(self) -> str:
-        if self.repeat == 0 and self.time.isdigit():
+    def time_label(self, tz: tzinfo | None = None) -> str:
+        """Readable clock. One-shot epochs use ``tz`` (HA local); weekly ``HH:MM`` is unchanged."""
+        if self.is_once:
             moment = datetime.fromtimestamp(int(self.time), timezone.utc)
+            if tz is not None:
+                moment = moment.astimezone(tz)
             return f"{moment.hour}:{moment.minute:02d} {moment.month}/{moment.day}"
         return self.time
 
-    def as_dict(self) -> dict[str, Any]:
-        return {
+    def as_dict(self, tz: tzinfo | None = None) -> dict[str, Any]:
+        row: dict[str, Any] = {
             "id": self.id,
             "enabled": self.enabled,
             "state": self.state,
-            "time": self.time_label,
+            "time": self.time_label(tz),
             "time_raw": self.time,
             "days": self.days_label,
             "days_raw": self.days,
@@ -322,6 +331,9 @@ class ThingSchedule:
             "mop_times": self.mop_times,
             "map_id": self.map_id,
         }
+        if self.is_once:
+            row["time_utc"] = self.time_label(timezone.utc)
+        return row
 
 
 def parse_schedule_entry(part: str) -> ThingSchedule:
@@ -391,19 +403,30 @@ def set_schedule_enabled(entries: list[ThingSchedule], schedule_id: int, enabled
     return encode_schedules(entries)
 
 
-def once_timestamp(date: str, clock: str) -> int:
+def schedule_zone(name: str | None) -> ZoneInfo:
+    """Home Assistant ``time_zone`` name, or UTC when missing/unknown."""
+    try:
+        return ZoneInfo(name or "UTC")
+    except Exception:
+        return ZoneInfo("UTC")
+
+
+def once_timestamp(date: str, clock: str, *, tz: tzinfo) -> int:
     """Epoch for a one-time entry.
 
     ``date`` is ``YYYY-MM-DD``. ``clock`` is ``HH:MM`` or ``HH:MM:SS`` (the
-    Home Assistant time selector sends seconds). The clock is tagged as UTC,
-    which is what makes captured ids 8 and 9 print as 10:30 10/3 and
-    16:45 9/21. The capture has no app screenshot of those times.
+    Home Assistant time selector may send seconds). Both are the user's local
+    wall clock in ``tz`` (HA's ``hass.config.time_zone``). The robot stores a
+    UTC unix epoch and the Narwal app shows that instant in local time — a
+    live check in Europe/Warsaw (UTC+1) showed a raw UTC tag of 13:10 as 14:10
+    in the app. Weekly entries keep a plain ``HH:MM`` local clock and are not
+    converted here. The timing payload has no separate timezone field.
     """
     text = clock.strip()
     if len(text) == 8 and text[2] == ":" and text[5] == ":":
         text = text[:5]
-    parsed = datetime.strptime(f"{date.strip()} {text}", "%Y-%m-%d %H:%M")
-    return int(parsed.replace(tzinfo=timezone.utc).timestamp())
+    local = datetime.strptime(f"{date.strip()} {text}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
+    return int(local.astimezone(timezone.utc).timestamp())
 
 
 def upsert_one_time(

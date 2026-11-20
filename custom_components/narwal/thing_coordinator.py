@@ -59,6 +59,7 @@ from .narwal_client.thing_protocol import (
     model_name,
     once_timestamp,
     parse_timing_value,
+    schedule_zone,
     set_schedule_enabled,
     upsert_one_time,
 )
@@ -370,6 +371,10 @@ class ThingCoordinator(DataUpdateCoordinator[ThingState]):
             return
         await self.client.write_timing(updated)
 
+    def schedule_tz(self):
+        """HA local zone for one-time schedule write/display."""
+        return schedule_zone(self.hass.config.time_zone)
+
     async def async_schedule_once(
         self,
         *,
@@ -381,7 +386,11 @@ class ThingCoordinator(DataUpdateCoordinator[ThingState]):
         sweep_type: int,
         passes: int,
     ) -> None:
-        """Read the list, enable one one-shot row, write the whole list back."""
+        """Read the list, enable one one-shot row, write the whole list back.
+
+        ``date`` / ``clock`` are Home Assistant local wall time. The epoch on
+        the wire is UTC so the Narwal app shows the same local clock.
+        """
         if not rooms:
             raise NarwalCommandError("A one-time clean needs at least one room")
         map_id = self.client.state.map_id
@@ -391,7 +400,7 @@ class ThingCoordinator(DataUpdateCoordinator[ThingState]):
         try:
             updated = upsert_one_time(
                 parse_timing_value(current),
-                when=once_timestamp(date, clock),
+                when=once_timestamp(date, clock, tz=self.schedule_tz()),
                 rooms=rooms,
                 map_id=map_id,
                 suction=suction,

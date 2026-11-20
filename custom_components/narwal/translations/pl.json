@@ -214,11 +214,11 @@
     },
     "schedule_clean_once": {
       "name": "Zaplanuj jednorazowe sprzątanie Freo S",
-      "description": "Dodaje jeden włączony jednorazowy wpis. Integracja najpierw odczytuje listę i zapisuje ją w całości. Wyłączony jednorazowy wpis jest używany ponownie, jeśli istnieje. Data i godzina są zapisywane jako zegar UTC. Zrzut ruchu nie potwierdza, czy robot pokazuje ten sam zegar.",
+      "description": "Dodaje jeden włączony jednorazowy wpis. Integracja najpierw odczytuje listę i zapisuje ją w całości. Wyłączony jednorazowy wpis jest używany ponownie, jeśli istnieje. Data i godzina to czas lokalny Home Assistant; na robocie zapisywane są jako epoka UTC, żeby aplikacja Narwal pokazała ten sam zegar lokalny.",
       "fields": {
         "entity_id": {"name": "Odkurzacz", "description": "Encja odkurzacza Freo S."},
-        "date": {"name": "Data", "description": "Data w formacie RRRR-MM-DD."},
-        "time": {"name": "Godzina", "description": "Godzina. Zapisywana jako UTC. Selektor czasu może dodać sekundy."},
+        "date": {"name": "Data", "description": "Lokalna data w formacie RRRR-MM-DD (strefa Home Assistant)."},
+        "time": {"name": "Godzina", "description": "Lokalna godzina (strefa Home Assistant). Selektor czasu może dodać sekundy."},
         "rooms": {"name": "Pokoje", "description": "Identyfikatory albo nazwy pokoi z mapy."},
         "areas": {"name": "Obszary", "description": "Identyfikatory obszarów Home Assistant zmapowanych na pokoje tego odkurzacza."},
         "mode": {"name": "Tryb", "description": "Vacuum Only albo Vacuum & Mop. Bez wartości używany jest domyślny tryb."},

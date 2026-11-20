@@ -357,10 +357,11 @@ class Bx3SchedulesSensor(Bx3Sensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        tz = self.coordinator.schedule_tz()
         rows = []
         lines = []
         for entry in self.state_data.schedules:
-            row = entry.as_dict()
+            row = entry.as_dict(tz)
             names = []
             for room_id in entry.rooms:
                 name = self.state_data.room_name(room_id)
@@ -369,7 +370,7 @@ class Bx3SchedulesSensor(Bx3Sensor):
             rows.append(row)
             status = "enabled" if entry.enabled else "disabled"
             lines.append(
-                f"{entry.id} {status} {entry.time_label} {entry.days_label}: {', '.join(names)}"
+                f"{entry.id} {status} {entry.time_label(tz)} {entry.days_label}: {', '.join(names)}"
             )
         return {"schedules": rows, "lines": lines, "timing": self.state_data.raw_timing}
 
