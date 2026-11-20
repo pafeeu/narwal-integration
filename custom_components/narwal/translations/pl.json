@@ -1,0 +1,26 @@
+{
+  "entity": {
+    "sensor": {
+      "battery": {"name": "Bateria"},
+      "status": {"name": "Status"},
+      "error": {"name": "Błąd"},
+      "elapsed_time": {"name": "Czas sprzątania"},
+      "cleaned_area": {"name": "Wyczyszczona powierzchnia"},
+      "progress": {"name": "Postęp sprzątania"},
+      "current_room": {"name": "Bieżący pokój"},
+      "schedules": {"name": "Harmonogramy"}
+    },
+    "binary_sensor": {
+      "charging": {"name": "Ładowanie"},
+      "docked": {"name": "W stacji"},
+      "problem": {"name": "Problem"}
+    },
+    "select": {
+      "water_level": {
+        "name": "Poziom wody",
+        "state": {"low": "Niski", "medium": "Średni", "high": "Wysoki"}
+      },
+      "clean_mode": {"name": "Tryb sprzątania"}
+    }
+  }
+}

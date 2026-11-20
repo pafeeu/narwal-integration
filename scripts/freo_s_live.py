@@ -128,9 +128,9 @@ def _print_state(client: ThingClient) -> None:
     state = client.state
     print(f"activity: {state.activity} ({state.status_text}, code {state.status_code})")
     print(f"battery: {state.battery}%  docked: {state.in_station}  charging: {state.is_charging}  fault: {state.fault}")
-    print(f"suction: {state.suction}  water: {state.water}  progress: {state.progress}")
-    print(f"cleaning_time: {state.cleaning_time}  cleaning_area: {state.cleaning_area}")
-    print(f"clean_rooms: {state.clean_room_ids}  current: {state.current_room}")
+    print(f"suction: {state.suction}  water: {state.water}  progress_percent: {state.progress}")
+    print(f"cleaning_time_min: {state.cleaning_time}  cleaning_area_m2: {state.cleaning_area}")
+    print(f"clean_rooms: {state.clean_room_ids}  current_room: {state.current_room or '-'}")
     print(f"map_id: {state.map_id}")
     if state.rooms:
         print("rooms: " + ", ".join(f"{room.room_id} {room.display_name}" for room in state.rooms))

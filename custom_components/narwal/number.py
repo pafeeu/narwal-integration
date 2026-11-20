@@ -8,10 +8,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import NarwalConfigEntry
-from .bx3 import async_setup_bx3_numbers
 from .const import PROTOCOL_THING
 from .coordinator import NarwalCoordinator
-from .entity import NarwalEntity
+from .entity import Bx3Entity, NarwalEntity
 
 
 async def async_setup_entry(
@@ -20,7 +19,7 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     if entry.runtime_data.protocol == PROTOCOL_THING:
-        async_setup_bx3_numbers(hass, entry.runtime_data, async_add_entities)
+        async_add_entities([Bx3CleanPasses(entry.runtime_data)])
         return
     coordinator = entry.runtime_data
     async_add_entities([NarwalVolume(coordinator), NarwalCleanPasses(coordinator)])
@@ -85,3 +84,36 @@ class NarwalCleanPasses(NarwalEntity, RestoreNumber):
     async def async_set_native_value(self, value: float) -> None:
         self.coordinator.clean_passes = int(value)
         self.async_write_ha_state()
+
+class Bx3CleanPasses(Bx3Entity, RestoreNumber):
+    """How many passes ``start_sweep`` asks for. Kept in Home Assistant."""
+
+    _attr_translation_key = "clean_passes"
+    _attr_icon = "mdi:repeat"
+    _attr_native_min_value = 1
+    _attr_native_max_value = 3
+    _attr_native_step = 1
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(coordinator, "clean_passes")
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_number_data()
+        if last and last.native_value:
+            self.coordinator.passes = int(last.native_value)
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    @property
+    def native_value(self) -> float:
+        return float(self.coordinator.passes)
+
+    async def async_set_native_value(self, value: float) -> None:
+        self.coordinator.passes = int(value)
+        self.async_write_ha_state()
+
+

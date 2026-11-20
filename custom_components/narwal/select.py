@@ -7,14 +7,15 @@ from dataclasses import dataclass
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import NarwalConfigEntry
-from .bx3 import async_setup_bx3_selects
 from .const import CLEAN_MODE_LIST, CLEAN_MODE_MAP, CLEAN_MODE_REVERSE, MOP_HUMIDITY_MAP, PROTOCOL_THING
 from .coordinator import NarwalCoordinator
-from .entity import NarwalEntity
+from .entity import Bx3Entity, NarwalEntity
+from .narwal_client.thing_protocol import SWEEP_BY_TYPE, SWEEP_TYPES, WATER_BY_LEVEL, WATER_LEVELS
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -68,7 +69,8 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     if entry.runtime_data.protocol == PROTOCOL_THING:
-        async_setup_bx3_selects(hass, entry.runtime_data, async_add_entities)
+        coordinator = entry.runtime_data
+        async_add_entities([Bx3CleanModeSelect(coordinator), Bx3WaterSelect(coordinator)])
         return
     coordinator = entry.runtime_data
     entities: list[SelectEntity] = [
@@ -152,3 +154,61 @@ class NarwalConfigSelect(NarwalEntity, SelectEntity):
         d = self.entity_description
         await self._run(self.coordinator.client.set_config(**{d.config_key: d.values[option]}))
         self.async_write_ha_state()
+
+class Bx3WaterSelect(Bx3Entity, SelectEntity, RestoreEntity):
+    """Water level sent with the next clean. The robot has no captured live write."""
+
+    _attr_translation_key = "water_level"
+    _attr_icon = "mdi:water"
+    _attr_options = list(WATER_LEVELS)
+
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(coordinator, "water_level")
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last and last.state in WATER_LEVELS and self.coordinator.water_level is None:
+            self.coordinator.water_level = WATER_LEVELS[last.state]
+
+    @property
+    def current_option(self) -> str | None:
+        return WATER_BY_LEVEL.get(self.coordinator.effective_water())
+
+    async def async_select_option(self, option: str) -> None:
+        level = WATER_LEVELS.get(option)
+        if level is None:
+            raise ServiceValidationError(f"Unknown water level {option!r}")
+        self.coordinator.water_level = level
+        self.async_write_ha_state()
+
+
+class Bx3CleanModeSelect(Bx3Entity, SelectEntity, RestoreEntity):
+    """Clean mode sent with the next ``start_sweep``. Kept in Home Assistant."""
+
+    _attr_translation_key = "clean_mode"
+    _attr_icon = "mdi:vacuum"
+    _attr_options = list(SWEEP_TYPES)
+
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(coordinator, "clean_mode")
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last and last.state in SWEEP_TYPES:
+            self.coordinator.sweep_type = SWEEP_TYPES[last.state]
+
+    @property
+    def current_option(self) -> str | None:
+        return SWEEP_BY_TYPE.get(self.coordinator.sweep_type)
+
+    async def async_select_option(self, option: str) -> None:
+        if option not in SWEEP_TYPES:
+            raise ServiceValidationError(
+                f"Unknown mode {option!r}; use one of {list(SWEEP_TYPES)}"
+            )
+        self.coordinator.sweep_type = SWEEP_TYPES[option]
+        self.async_write_ha_state()
+
+

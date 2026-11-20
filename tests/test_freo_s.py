@@ -18,7 +18,9 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.narwal.const import DOMAIN
 from custom_components.narwal.narwal_client.thing_client import ThingClient
-from custom_components.narwal.narwal_client.thing_protocol import apply_thing_message
+from custom_components.narwal.narwal_client.thing_faults import fault_text
+
+from .conftest import FakeThing
 
 FIXTURES = Path(__file__).parent / "fixtures" / "freo_s"
 DEVICE = "fedcba0987654321fedcba0987654321"
@@ -55,44 +57,25 @@ async def freo(hass: HomeAssistant):
             "model": "Narwal Freo S",
         },
     )
-    calls: list[tuple] = []
+    thing = FakeThing()
 
     async def fake_connect(self: ThingClient) -> None:
         self._loop = asyncio.get_running_loop()
+        self._client = SimpleNamespace()
         self._connected.set()
         self.state.device_reachable = True
 
     async def fake_disconnect(self: ThingClient) -> None:
         self._connected.clear()
 
-    async def fake_get_reported(self: ThingClient, properties, timeout=10.0):
-        calls.append(("get", dict(properties)))
-        modules = {
-            "robot_status": "get_reported_robot_status.json",
-            "clean": "get_reported_clean_all.json",
-            "map": "get_reported_map.json",
-        }
-        for module, name in modules.items():
-            if module in properties and properties[module] == []:
-                item = _load(name)["responses"][0]
-                apply_thing_message(self.state, item["topic"], item["payload"])
-        return {"payload": {"code": 0}}
-
-    async def fake_invoke(self: ThingClient, module, action, data=None, timeout=15.0):
-        calls.append(("invoke", module, action, data or {}))
-        return {"code": 0, "method": "invoke"}
-
-    async def fake_set_properties(self: ThingClient, properties, timeout=15.0):
-        calls.append(("set", properties))
-        return {"payload": {"code": 0}}
+    def fake_request_blocking(self: ThingClient, suffix: str, body: dict, kind: str, timeout: float):
+        return thing.answer(self, suffix, body, kind)
 
     session = SimpleNamespace(access_token="new.token", refresh_token="new-refresh")
     with (
         patch.object(ThingClient, "connect", fake_connect),
         patch.object(ThingClient, "disconnect", fake_disconnect),
-        patch.object(ThingClient, "get_reported", fake_get_reported),
-        patch.object(ThingClient, "invoke", fake_invoke),
-        patch.object(ThingClient, "set_properties", fake_set_properties),
+        patch.object(ThingClient, "_request_blocking", fake_request_blocking),
         patch("custom_components.narwal.thing_coordinator.NarwalCloud.refresh_token", return_value=session),
         patch("custom_components.narwal._register_card"),
     ):
@@ -100,7 +83,7 @@ async def freo(hass: HomeAssistant):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
         assert entry.state is ConfigEntryState.LOADED
-        yield SimpleNamespace(entry=entry, calls=calls, coordinator=entry.runtime_data)
+        yield SimpleNamespace(entry=entry, calls=thing.calls, coordinator=entry.runtime_data)
         await hass.config_entries.async_unload(entry.entry_id)
         await hass.async_block_till_done()
 
@@ -255,3 +238,48 @@ async def test_property_push_updates_the_vacuum(hass: HomeAssistant, freo) -> No
     assert state.state == VacuumActivity.CLEANING
     assert state.attributes["current_room"] == "Wejście"
     assert hass.states.get(_entity(hass, "sensor", "current_room")).state == "Wejście"
+
+
+async def test_status_6_is_docked_and_current_room_is_a_name(hass: HomeAssistant, freo) -> None:
+    client = freo.coordinator.client
+    root = f"/{PRODUCT}/{DEVICE}/thing"
+
+    def push(payload: dict) -> None:
+        client._on_message(None, None, SimpleNamespace(
+            topic=f"{root}/property/down", payload=json.dumps(payload).encode(),
+        ))
+
+    push({"method": "reported", "messageId": "room", "property": {
+        "clean": {"clean_rooms": {"time": 1, "value": [6]}},
+        "robot_status": {"status": {"time": 1, "value": 4}},
+    }})
+    await hass.async_block_till_done()
+    assert hass.states.get(_entity(hass, "sensor", "current_room")).state == "Kuchnia"
+    assert hass.states.get(_entity(hass, "vacuum", "vacuum")).attributes["current_room"] == "Kuchnia"
+
+    push({"method": "reported", "messageId": "dock", "property": {
+        "robot_status": {
+            "status": {"time": 2, "value": 6},
+            "robot_in_station": {"time": 2, "value": True},
+            "battery_percentage": {"time": 2, "value": 98},
+        },
+        "clean": {"clean_rooms": {"time": 2, "value": []}},
+    }})
+    await hass.async_block_till_done()
+    vacuum = hass.states.get(_entity(hass, "vacuum", "vacuum"))
+    assert vacuum.state == VacuumActivity.DOCKED
+    assert vacuum.attributes["status"] == "Working at station"
+    assert hass.states.get(_entity(hass, "binary_sensor", "charging")).state == "on"
+    assert hass.states.get(_entity(hass, "sensor", "current_room")).state == "unknown"
+
+
+async def test_unknown_fault_keeps_the_raw_code(hass: HomeAssistant, freo) -> None:
+    client = freo.coordinator.client
+    client.state.robot_status["fault"] = 7
+    freo.coordinator.async_set_updated_data(client.state)
+    await hass.async_block_till_done()
+    error = hass.states.get(_entity(hass, "sensor", "error"))
+    assert error.state == fault_text(7, "en")
+    assert error.attributes["code"] == 7
+    assert error.attributes["message_pl"] == fault_text(7, "pl")
+    assert error.state != "Fault 7"

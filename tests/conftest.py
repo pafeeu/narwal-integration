@@ -217,6 +217,61 @@ def mock_robot(robot: FakeRobot):
         yield robot
 
 
+class FakeThing:
+    """ThingModel stand-in for the HA harness.
+
+    Same idea as ``FakeRobot``: only the blocking MQTT wait is replaced.
+    ``ThingClient`` still builds the JSON and topics. Replies are the
+    captured fixtures, fed back through the real message handler.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[tuple] = []
+
+    def answer(self, client: Any, suffix: str, body: dict[str, Any], kind: str) -> dict[str, Any]:
+        import json
+        from pathlib import Path
+
+        from custom_components.narwal.narwal_client.thing_protocol import apply_thing_message
+
+        method = body.get("method")
+        if method == "getReported":
+            self.calls.append(("get", dict(body.get("properties") or {})))
+            reply = self._reported(body)
+        elif method == "invoke":
+            self.calls.append(("invoke", body.get("module"), body.get("actionIdentifier"), body.get("input") or {}))
+            reply = {"code": 0, "method": "invoke", "messageId": body.get("messageId")}
+        elif method == "set":
+            self.calls.append(("set", body.get("property")))
+            reply = {"method": "set", "messageId": body.get("messageId"), "payload": {"code": 0}}
+        else:
+            reply = {"code": 0, "messageId": body.get("messageId")}
+        topic = client.topic("property/up/reply" if kind == "property" else "action/invoke/reply")
+        client._on_message(None, None, SimpleNamespace(topic=topic, payload=json.dumps(reply).encode()))
+        return reply
+
+    @staticmethod
+    def _reported(body: dict[str, Any]) -> dict[str, Any]:
+        import json
+        from pathlib import Path
+
+        fixtures = Path(__file__).parent / "fixtures" / "freo_s"
+        names = {
+            "robot_status": "get_reported_robot_status.json",
+            "clean": "get_reported_clean_all.json",
+            "map": "get_reported_map.json",
+        }
+        payload: dict[str, Any] = {"code": 0}
+        properties = body.get("properties") or {}
+        for module, filename in names.items():
+            if properties.get(module) == []:
+                item = json.loads((fixtures / filename).read_text())["responses"][0]["payload"]
+                module_body = item["payload"].get(module)
+                if module_body is not None:
+                    payload[module] = module_body
+        return {"method": "getReported", "messageId": body.get("messageId"), "payload": payload}
+
+
 def push(hass, client: NarwalClient, topic: str, message: str, values: dict[str, Any]) -> None:
     """Deliver a robot push through the client's real MQTT message handler."""
     msg = SimpleNamespace(topic=f"{client.base_topic}/{topic}", payload=frame(encode(message, values)))

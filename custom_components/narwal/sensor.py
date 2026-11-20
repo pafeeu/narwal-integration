@@ -17,10 +17,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import NarwalConfigEntry
-from .bx3 import async_setup_bx3_sensors
 from .const import PROTOCOL_THING
 from .coordinator import NarwalCoordinator
-from .entity import NarwalEntity
+from .entity import Bx3Entity, NarwalEntity
+from .narwal_client.thing_faults import fault_text
 from .narwal_client import NarwalState
 from .narwal_client.error_codes import error_message
 from .narwal_client.proto import enum_labels
@@ -179,7 +179,17 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     if entry.runtime_data.protocol == PROTOCOL_THING:
-        async_setup_bx3_sensors(hass, entry.runtime_data, async_add_entities)
+        coordinator = entry.runtime_data
+        async_add_entities([
+            Bx3BatterySensor(coordinator),
+            Bx3StatusSensor(coordinator),
+            Bx3ErrorSensor(coordinator),
+            Bx3DurationSensor(coordinator),
+            Bx3AreaSensor(coordinator),
+            Bx3ProgressSensor(coordinator),
+            Bx3CurrentRoomSensor(coordinator),
+            Bx3SchedulesSensor(coordinator),
+        ])
         return
     coordinator = entry.runtime_data
     async_add_entities(NarwalSensor(coordinator, d) for d in SENSORS)
@@ -202,3 +212,151 @@ class NarwalSensor(NarwalEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any] | None:
         fn = self.entity_description.attrs_fn
         return fn(self.state_data) if fn else None
+
+class Bx3Sensor(Bx3Entity, SensorEntity):
+    """One reported ThingModel value."""
+
+    def __init__(
+        self,
+        coordinator: ThingCoordinator,
+        key: str,
+        *,
+        device_class: SensorDeviceClass | None = None,
+        state_class: SensorStateClass | None = None,
+        unit: str | None = None,
+        suggested_unit: str | None = None,
+        icon: str | None = None,
+    ) -> None:
+        super().__init__(coordinator, key)
+        self._attr_translation_key = key
+        self._attr_device_class = device_class
+        self._attr_state_class = state_class
+        self._attr_native_unit_of_measurement = unit
+        self._attr_suggested_unit_of_measurement = suggested_unit
+        self._attr_icon = icon
+
+
+class Bx3BatterySensor(Bx3Sensor):
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(
+            coordinator, "battery",
+            device_class=SensorDeviceClass.BATTERY,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=PERCENTAGE,
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        return self.state_data.battery
+
+
+class Bx3StatusSensor(Bx3Sensor):
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(coordinator, "status", icon="mdi:robot-vacuum")
+
+    @property
+    def native_value(self) -> str:
+        return self.state_data.status_text
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        state = self.state_data
+        return {
+            "status_code": state.status_code,
+            "activity": state.activity,
+            "in_station": state.in_station,
+        }
+
+
+class Bx3ErrorSensor(Bx3Sensor):
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(coordinator, "error", icon="mdi:alert-circle-outline")
+
+    def _language(self) -> str:
+        if self.hass is None:
+            return "en"
+        return getattr(self.hass.config, "language", None) or "en"
+
+    @property
+    def native_value(self) -> str:
+        return fault_text(self.state_data.fault, self._language())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        code = self.state_data.fault or 0
+        return {
+            "code": code,
+            "message_en": fault_text(code, "en"),
+            "message_pl": fault_text(code, "pl"),
+        }
+
+
+class Bx3DurationSensor(Bx3Sensor):
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(
+            coordinator, "elapsed_time",
+            device_class=SensorDeviceClass.DURATION,
+            unit=UnitOfTime.MINUTES,
+            icon="mdi:timer-outline",
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        return self.state_data.cleaning_time
+
+
+class Bx3AreaSensor(Bx3Sensor):
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(
+            coordinator, "cleaned_area",
+            device_class=SensorDeviceClass.AREA,
+            unit=UnitOfArea.SQUARE_METERS,
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        return self.state_data.cleaning_area
+
+
+class Bx3ProgressSensor(Bx3Sensor):
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(
+            coordinator, "progress",
+            unit=PERCENTAGE,
+            icon="mdi:progress-check",
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        return self.state_data.progress
+
+
+class Bx3CurrentRoomSensor(Bx3Sensor):
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(coordinator, "current_room", icon="mdi:floor-plan")
+
+    @property
+    def native_value(self) -> str | None:
+        return self.state_data.current_room
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"room_ids": self.state_data.clean_room_ids}
+
+
+class Bx3SchedulesSensor(Bx3Sensor):
+    def __init__(self, coordinator: ThingCoordinator) -> None:
+        super().__init__(coordinator, "schedules", icon="mdi:calendar-clock")
+
+    @property
+    def native_value(self) -> int:
+        return sum(1 for entry in self.state_data.schedules if entry.enabled)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "schedules": [entry.as_dict() for entry in self.state_data.schedules],
+            "timing": self.state_data.raw_timing,
+        }
+
+

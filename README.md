@@ -220,15 +220,18 @@ custom_components/narwal/
 ├── __init__.py              # Integration setup/teardown, card registration
 ├── config_flow.py           # Two-step UI config flow (login + device)
 ├── const.py                 # HA-level constants (fan speeds, clean modes)
-├── coordinator.py           # MQTT pushes + polling, token refresh, map/settings refresh
-├── entity.py                # Base entity: device info, command error handling
-├── vacuum.py                # Vacuum entity, clean area (segments), send_command
+├── coordinator.py           # Protobuf MQTT pushes + polling, token refresh
+├── thing_coordinator.py     # Freo S polling, map fetch, schedule writes
+├── entity.py                # Base entities for both protocols
+├── vacuum.py                # Vacuum entities (protobuf and Freo S)
 ├── sensor.py / binary_sensor.py / select.py / switch.py / number.py / button.py
-├── camera.py                # Map rendering (coordinator owns map fetching)
+├── camera.py                # Protobuf map image (Freo S has no rendered map)
 ├── strings.json, translations/en.json
 ├── frontend/narwal-vacuum-card.js
 └── narwal_client/           # Standalone Narwal protocol library
-    ├── client.py             # MQTT client: connect, commands, pushes
+    ├── client.py             # Protobuf MQTT client
+    ├── thing_client.py       # Freo S ThingModel MQTT client
+    ├── thing_protocol.py     # Freo S JSON payloads, schedules, status
     ├── cloud.py              # REST API client (login, refresh)
     ├── const.py              # Topics, enums matching the app
     ├── models.py             # NarwalState: activity, status, rooms, map geometry

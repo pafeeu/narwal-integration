@@ -460,15 +460,22 @@ class ThingState:
 
     @property
     def progress(self) -> int | None:
+        """Task completion percent.
+
+        A finished job reports 100. A new job starts at 0 and climbs in coarse
+        steps (live: 2, 3, 5, 17, 21 while one room was still running). It is
+        not a smooth 0–100 gauge, and it is not a room id.
+        """
         return _as_int(self.clean.get("cleaning_progress"))
 
     @property
     def cleaning_time(self) -> int | None:
-        """Whole minutes, as reported. It stayed 0 through a sub-minute clean."""
+        """Whole minutes. A ~40 s clean stayed at 0–1; a finished job reported 3."""
         return _as_int(self.clean.get("cleaning_time"))
 
     @property
     def cleaning_area(self) -> int | None:
+        """Whole square meters. The same samples were 0–1 during a short clean and 3 when finished."""
         return _as_int(self.clean.get("cleaning_area"))
 
     @property
@@ -514,21 +521,28 @@ class ThingState:
             return None
         return self.battery < 100
 
-    def room_name(self, room_id: int) -> str:
+    def room_name(self, room_id: int) -> str | None:
+        """Map room name. None when this id is not in the loaded map."""
         for room in self.rooms:
             if room.room_id == room_id:
                 return room.display_name
-        return str(room_id)
+        return None
 
     @property
     def current_room(self) -> str | None:
-        """Room names of the running task. One room is the room being cleaned."""
+        """Name of the room in the running task.
+
+        ThingModel pushes carry ``clean.clean_rooms`` (the rooms in the task),
+        not a robot pose or a separate current-zone field. The name comes from
+        the map's room list. An id with no loaded name is omitted, not shown
+        as a number.
+        """
         if self.activity not in (ACTIVITY_CLEANING, ACTIVITY_PAUSED):
             return None
-        ids = self.clean_room_ids
-        if not ids:
+        names = [name for room_id in self.clean_room_ids if (name := self.room_name(room_id))]
+        if not names:
             return None
-        return ", ".join(self.room_name(room_id) for room_id in ids)
+        return ", ".join(names)
 
 
 def apply_thing_message(state: ThingState, topic: str, data: dict[str, Any]) -> bool:

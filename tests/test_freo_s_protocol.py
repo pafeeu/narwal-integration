@@ -141,6 +141,16 @@ def test_status_push_sequence_matches_the_capture() -> None:
     assert cleaning.clean_room_ids == [5]
     assert cleaning.current_room == "Wejście"
     assert cleaning.activity == "cleaning"
+    # No pose or current-zone field exists in the pushes. Without the map
+    # room list, an id is not presented as the room name.
+    unnamed = ThingState()
+    apply_thing_message(unnamed, first["topic"], first["payload"])
+    assert unnamed.clean_room_ids == [5]
+    assert unnamed.current_room is None
+    unnamed.robot_status["status"] = 6
+    unnamed.robot_status["robot_in_station"] = True
+    assert unnamed.activity == "docked"
+    assert unnamed.status_text == "Working at station"
 
 
 def test_command_payloads_match_fixtures() -> None:

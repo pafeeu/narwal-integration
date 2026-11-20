@@ -359,7 +359,7 @@ class NarwalVacuumCard extends HTMLElement {
     const root = this.shadowRoot;
     const err = this._state(this._sibling("sensor", "error"));
     const errBanner = root.querySelector(".banner.error");
-    const hasError = err && !["No error", "unknown", "unavailable"].includes(err.state);
+    const hasError = err && !["No error", "Brak błędu", "unknown", "unavailable"].includes(err.state);
     errBanner.classList.toggle("show", !!hasError);
     if (hasError) errBanner.querySelector(".text").textContent = err.state;
 
